@@ -519,75 +519,81 @@ def run_3d_simulation(
     load_algorithm_path(active_algo)
 
     # =========================================================================
-    # LOGIKA FRAME PER FRAME (UPDATE & SMOOTH INTERPOLATION)
+    # LOGIKA FRAME PER FRAME (ENTITY CONTROLLER: UPDATE & INPUT)
     # =========================================================================
 
-    def update():
-        # Sensor LIDAR scanner berputar terus
-        lidar_sensor.rotation_y += 360 * time.dt
+    class SimulationController(Entity):
+        """
+        Pengontrol utama pergerakan robot dan penerima input keyboard Ursina.
+        Di Ursina Engine, metode update() dan input() pada Entity secara otomatis
+        dipanggil pada setiap frame siklus render.
+        """
+        def update(self):
+            # Sensor LIDAR scanner berputar terus secara kontinu
+            lidar_sensor.rotation_y += 360 * time.dt
 
-        if not sim_state["is_moving"] or sim_state["finished"]:
-            return
+            if not sim_state["is_moving"] or sim_state["finished"]:
+                return
 
-        if len(waypoints) <= 1:
-            sim_state["finished"] = True
-            refresh_hud()
-            return
+            if len(waypoints) <= 1:
+                sim_state["finished"] = True
+                refresh_hud()
+                return
 
-        target_idx = sim_state["current_idx"] + 1
-        if target_idx >= len(waypoints):
-            sim_state["finished"] = True
-            sim_state["is_moving"] = False
-            btn_play_pause.text = "Selesai!"
-            refresh_hud("SELESAI (Sampai di Titik Tujuan!)")
-            return
+            target_idx = sim_state["current_idx"] + 1
+            if target_idx >= len(waypoints):
+                sim_state["finished"] = True
+                sim_state["is_moving"] = False
+                btn_play_pause.text = "Selesai!"
+                refresh_hud("SELESAI (Sampai di Titik Tujuan!)")
+                return
 
-        target_pos = waypoints[target_idx]
-        current_pos = robot_root.position
+            target_pos = waypoints[target_idx]
+            current_pos = robot_root.position
 
-        dir_vec = target_pos - current_pos
-        dist = math.sqrt(dir_vec.x ** 2 + dir_vec.z ** 2)
+            dir_vec = target_pos - current_pos
+            dist = math.sqrt(dir_vec.x ** 2 + dir_vec.z ** 2)
 
-        # Rotasi halus robot menghadap ke waypoint berikutnya (lerp_angle)
-        if dist > 0.01:
-            target_angle = math.degrees(math.atan2(dir_vec.x, dir_vec.z))
-            robot_root.rotation_y = lerp_angle(robot_root.rotation_y, target_angle, time.dt * 12.0)
+            # Rotasi halus robot menghadap ke waypoint berikutnya (lerp_angle)
+            if dist > 0.01:
+                target_angle = math.degrees(math.atan2(dir_vec.x, dir_vec.z))
+                robot_root.rotation_y = lerp_angle(robot_root.rotation_y, target_angle, time.dt * 12.0)
 
-        # Translasi pergerakan robot
-        step = sim_state["speed"] * time.dt
-        if dist <= step:
-            # Robot mencapai titik waypoint saat ini
-            robot_root.position = target_pos
-            sim_state["current_idx"] = target_idx
+            # Translasi pergerakan robot
+            step = sim_state["speed"] * time.dt
+            if dist <= step:
+                # Robot mencapai titik waypoint saat ini
+                robot_root.position = target_pos
+                sim_state["current_idx"] = target_idx
 
-            # Sembunyikan titik preview dan tinggalkan jejak bercahaya di lantai
-            if target_idx < len(preview_entities):
-                preview_entities[target_idx].visible = False
-            spawn_trail_marker(target_pos)
+                # Sembunyikan titik preview dan tinggalkan jejak bercahaya di lantai
+                if target_idx < len(preview_entities):
+                    preview_entities[target_idx].visible = False
+                spawn_trail_marker(target_pos)
 
-            refresh_hud()
-        else:
-            # Interpolasi linier menuju waypoint
-            robot_root.position += Vec3(dir_vec.x / dist, 0, dir_vec.z / dist) * step
+                refresh_hud()
+            else:
+                # Interpolasi linier menuju waypoint
+                robot_root.position += Vec3(dir_vec.x / dist, 0, dir_vec.z / dist) * step
 
-    def input(key):
-        if key == 'space':
-            toggle_play_pause()
-        elif key == 'r':
-            reset_robot()
-        elif key == 'tab':
-            toggle_algorithm()
-        elif key == 'v':
-            cycle_camera()
-        elif key in ('+', '=', 'up arrow'):
-            adjust_speed(1.0)
-        elif key in ('-', 'down arrow'):
-            adjust_speed(-1.0)
-        elif key == 'escape':
-            application.quit()
+        def input(self, key):
+            if key == 'space':
+                toggle_play_pause()
+            elif key == 'r':
+                reset_robot()
+            elif key == 'tab':
+                toggle_algorithm()
+            elif key == 'v':
+                cycle_camera()
+            elif key in ('+', '=', 'up arrow'):
+                adjust_speed(1.0)
+            elif key in ('-', 'down arrow'):
+                adjust_speed(-1.0)
+            elif key == 'escape':
+                application.quit()
 
-    app.update = update
-    app.input = input
+    # Inisialisasi controller entity agar siklus update & input Ursina aktif
+    controller = SimulationController()
 
     # Jalankan loop aplikasi Ursina
     app.run()
