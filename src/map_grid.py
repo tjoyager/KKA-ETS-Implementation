@@ -28,10 +28,10 @@ class WarehouseGrid:
 
     def __init__(
         self,
-        width: int = 20,
-        height: int = 15,
-        start: Tuple[int, int] = (1, 1),
-        goal: Tuple[int, int] = (18, 13),
+        width: int = 30,
+        height: int = 20,
+        start: Tuple[int, int] = (1, 2),
+        goal: Tuple[int, int] = (28, 17),
     ):
         self.width = width
         self.height = height
@@ -112,33 +112,63 @@ class WarehouseGrid:
     @classmethod
     def create_default_warehouse(cls) -> "WarehouseGrid":
         """
-        Membuat layout denah gudang standar dengan lorong dan rak-rak realistis.
-        Ukuran: 20x15 grid.
-        Start: (1, 2) - Docking station pojok kiri bawah.
-        Goal: (18, 12) - Rak target barang pojok kanan atas.
+        Membuat layout denah gudang kompleks (30x20 sel) dengan lorong bertingkat
+        dan rintangan labirin realistis.
         
-        Layout ini dirancang agar memperlihatkan perbedaan teoritis antara A*
-        (menjamin jalur optimal terpendek) dan Greedy Best-First Search
-        (terjebak mengambil jalur memutar karena sifat greedy-nya).
+        Start: (1, 2)  - Docking station / Charging Pad di pojok kiri bawah.
+        Goal:  (28, 17) - Rak penyimpanan kargo tingkat tinggi di pojok kanan atas.
+        
+        Karakteristik Layout:
+        - Terdapat 4 zona baris rak penyimpanan utama dengan lorong-lorong alternatif.
+        - Memiliki jebakan buntu (*cul-de-sac trap*) dan sekat partisi di jalur diagonal.
+        - Perbedaan Algoritma Sangat Nyata:
+          * A* Search mengevaluasi biaya aktual g(n) sehingga memilih lorong tembus
+            tengah yang optimal (biaya 42 langkah).
+          * Greedy Best-First Search (GBFS) hanya terpaku pada nilai heuristik h(n)
+            sehingga terburu-buru ke lorong atas yang terbentur dinding pembatas,
+            terpaksa memutar jauh (biaya 48 langkah / +6 langkah lebih panjang).
         """
-        warehouse = cls(width=20, height=15, start=(1, 2), goal=(18, 12))
+        warehouse = cls(width=30, height=20, start=(1, 2), goal=(28, 17))
 
-        # Baris 1: Rak area bawah (x, y, w, h)
-        warehouse.add_shelf_block(3, 1, 4, 3)
-        warehouse.add_shelf_block(10, 1, 6, 3)
+        # Zona 1: Rak Area Bawah (y = 1..4)
+        warehouse.add_shelf_block(x_start=3, y_start=1, block_w=6, block_h=4)
+        warehouse.add_shelf_block(x_start=12, y_start=1, block_w=7, block_h=4)
+        warehouse.add_shelf_block(x_start=22, y_start=1, block_w=6, block_h=4)
 
-        # Baris 2: Rak area tengah
-        warehouse.add_shelf_block(3, 6, 5, 3)
-        warehouse.add_shelf_block(11, 6, 5, 3)
+        # Zona 2: Rak Area Tengah-Bawah (y = 7..10)
+        warehouse.add_shelf_block(x_start=3, y_start=7, block_w=6, block_h=4)
+        warehouse.add_shelf_block(x_start=12, y_start=7, block_w=8, block_h=4)
+        warehouse.add_shelf_block(x_start=23, y_start=7, block_w=5, block_h=4)
 
-        # Baris 3: Rak area atas
-        warehouse.add_shelf_block(3, 11, 4, 3)
-        warehouse.add_shelf_block(10, 11, 6, 3)
+        # Zona 3: Rak Area Tengah-Atas (y = 13..15)
+        warehouse.add_shelf_block(x_start=3, y_start=13, block_w=7, block_h=3)
+        warehouse.add_shelf_block(x_start=13, y_start=13, block_w=7, block_h=3)
+        warehouse.add_shelf_block(x_start=23, y_start=13, block_w=5, block_h=3)
 
-        # Rintangan lorong tengah vertikal (lorong buntu/sekat partisi)
-        warehouse.set_obstacle(9, 7)
-        warehouse.set_obstacle(9, 8)
-        warehouse.set_obstacle(9, 9)
+        # Zona 4: Rak Area Atas (y = 17..18)
+        warehouse.add_shelf_block(x_start=3, y_start=17, block_w=6, block_h=2)
+        warehouse.add_shelf_block(x_start=12, y_start=17, block_w=8, block_h=2)
+
+        # Rintangan Strategis & Sekat Partisi Labirin:
+        # 1. Lorong buntu di persimpangan tengah (x=10, 11)
+        warehouse.set_obstacle(10, 8)
+        warehouse.set_obstacle(10, 9)
+        warehouse.set_obstacle(10, 10)
+        warehouse.set_obstacle(11, 10)
+        warehouse.set_obstacle(11, 11)
+        warehouse.set_obstacle(11, 12)
+
+        # 2. Dinding pembatas vertikal dekat tujuan (menjebak greedy search)
+        warehouse.set_obstacle(21, 14)
+        warehouse.set_obstacle(21, 15)
+        warehouse.set_obstacle(21, 16)
+        warehouse.set_obstacle(21, 17)
+        warehouse.set_obstacle(21, 18)
+
+        # 3. Sekat lorong bawah (mengarahkan aliran robot ke jalur tengah)
+        warehouse.set_obstacle(20, 3)
+        warehouse.set_obstacle(20, 4)
+        warehouse.set_obstacle(20, 5)
 
         return warehouse
 

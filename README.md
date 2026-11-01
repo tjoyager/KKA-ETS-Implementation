@@ -128,30 +128,31 @@ Saat jendela visualisasi 3D terbuka, seluruh kontrol dapat diakses dengan **dua 
 
 ## 📊 Hasil Analisis Perbandingan: A* Search vs GBFS
 
-Berikut adalah data metrik riil hasil pencarian rute pada denah gudang default (20x15 sel):
+Berikut adalah data metrik riil hasil pencarian rute pada denah gudang labirin kompleks berukuran **30x20 sel**:
 
 ```text
 TABEL PERBANDINGAN METRIK KINERJA:
 +----------------------------+------------+----------------+---------------+-----------------------+--------------+
 | Algoritma                  | Status     | Panjang Rute   | Total Biaya   | Simpul Dieksplorasi   | Waktu (ms)   |
 +----------------------------+------------+----------------+---------------+-----------------------+--------------+
-| A* Search                  | SUKSES     | 28 sel         | 27.00         | 113 simpul            | ~1.0 ms      |
-| Greedy Best-First Search   | SUKSES     | 32 sel         | 31.00         | 40 simpul             | ~0.3 ms      |
+| A* Search                  | SUKSES     | 43 sel         | 42.00         | 188 simpul            | ~3.2 ms      |
+| Greedy Best-First Search   | SUKSES     | 49 sel         | 48.00         | 53 simpul             | ~0.8 ms      |
 +----------------------------+------------+----------------+---------------+-----------------------+--------------+
 ```
 
 ### 🧠 Analisis Teoritis untuk Laporan Tugas KKA:
 
 1. **Optimalitas Rute ($f(n) = g(n) + h(n)$ vs $f(n) = h(n)$)**:
-   - **A\* Search** berhasil menemukan rute yang **paling pendek dan optimal** dengan total biaya **27.00**. A* mempertimbangkan biaya langkah yang sudah ditempuh $g(n)$, sehingga tidak tergiur lorong buntu.
-   - **Greedy Best-First Search (GBFS)** menghasilkan rute **suboptimal** dengan total biaya **31.00** (lebih panjang 4 langkah). Karena hanya melihat $h(n)$ (jarak terdekat ke Goal), GBFS terburu-buru bergerak lurus ke arah target di sisi atas sehingga terhadang barisan rak dan terpaksa memutar lebih jauh.
+   - **A\* Search** berhasil menemukan rute yang **paling pendek dan optimal** dengan total biaya **42.00**. A* mempertimbangkan biaya langkah yang sudah ditempuh $g(n)$, sehingga robot memilih lorong tembus di tengah gudang yang bebas hambatan.
+   - **Greedy Best-First Search (GBFS)** menghasilkan rute **suboptimal** dengan total biaya **48.00** (lebih panjang 6 langkah / +14.3%). Karena hanya berpatokan pada nilai $h(n)$ (jarak terdekat ke Goal), GBFS terburu-buru bergerak lurus ke arah atas sehingga terhalang sekat dinding partisi rak di dekat Goal dan terpaksa memutar jauh ke lorong paling atas.
 
 2. **Efisiensi Eksplorasi Simpul**:
-   - **GBFS** hanya mengeksplorasi **40 simpul** sebelum mencapai tujuan. Pencarian sangat cepat dan terarah (*greedy*).
-   - **A\*** mengeksplorasi **113 simpul** karena harus memeriksa simpul alternatif di lorong lain untuk membuktikan secara matematis bahwa tidak ada jalur lain yang lebih pendek.
+   - **GBFS** hanya mengeksplorasi **53 simpul** sebelum mencapai tujuan. Pencariannya sangat cepat dan terarah (*greedy*).
+   - **A\*** mengeksplorasi **188 simpul** karena harus menguji lorong-lorong alternatif demi membuktikan secara matematis bahwa tidak ada jalur lain yang lebih pendek.
 
-3. **Kesimpulan Praktis di Industri Gudang**:
-   - Untuk robot gudang otonom (AGV) yang beroperasi ribuan kali sehari mengantar paket, **A\* Search lebih direkomendasikan** karena penghematan jarak tempuh (baterai & waktu perjalanan fisik) jauh lebih berharga daripada selisih waktu komputasi mikrodetik.
+3. **Visualisasi Jejak Jalur (*Trajectory Trail*) di 3D**:
+   - **A\* Search**: Menghasilkan jejak bercahaya warna **Hijau Neon** yang melintas langsung membelah lorong tengah secara efisien.
+   - **GBFS**: Menghasilkan jejak bercahaya warna **Oranye Api** yang menunjukkan robot tergiur lorong atas sebelum terpaksa berbelok memutar.
 
 ---
 

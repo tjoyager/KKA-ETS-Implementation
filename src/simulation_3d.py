@@ -6,14 +6,14 @@ Visualisasi 3D simulasi robot gudang (Warehouse AGV) berbasis Ursina Engine.
 Fitur Unggulan:
 - Multi-Algorithm Live Switch: Beralih rute A* Search dan Greedy Best-First Search (GBFS)
   secara langsung di dalam jendela 3D tanpa perlu me-restart program.
+- Animated Trajectory Trail: Robot meninggalkan jejak bercahaya dinamis di lantai
+  (Hijau Neon untuk rute optimal A*, Oranye Api untuk rute suboptimal GBFS).
+- Dynamic Smooth Movement & Rotation: Robot bergerak mulus antar koordinat grid dan berputar
+  menghadap arah belokan (heading) menggunakan interpolasi sudut (lerp_angle).
 - Pencahayaan 3D Nyata: Menggunakan DirectionalLight dan AmbientLight dengan kontras warna
   akurat (color.rgb32) sehingga lingkungan gudang terlihat hidup dan tidak putih polos.
-- Kamera Terpusat: Posisi kamera diarahkan tepat ke tengah grid (Vec3(0, 0, 0)) dengan
-  sudut pandang Isometrik, Tampak Atas (Top-Down), dan Kamera Bebas Orbit.
-- Kontrol Interaktif Ganda: Tombol UI di layar (klik mouse) dan Shortcut Keyboard.
-- Model 3D Realistis: Denah rak gudang bertingkat, lantai grid, platform docking Start,
-  target kargo Goal, dan robot AGV lengkap dengan LIDAR & lampu LED.
-- HUD Interaktif: Menampilkan metrik perbandingan kinerja (biaya rute, simpul dieksplorasi,
+- Kamera Terpusat Grid 30x20: Sudut pandang Isometrik, Tampak Atas (Top-Down), dan Kamera Bebas Orbit.
+- HUD Interaktif & Tombol UI: Menampilkan metrik perbandingan kinerja (biaya rute, simpul dieksplorasi,
   kecepatan, dan progres langkah) secara real-time.
 """
 
@@ -54,6 +54,7 @@ def run_3d_simulation(
             EditorCamera,
             DirectionalLight,
             AmbientLight,
+            lerp_angle,
             destroy,
             time,
             application,
@@ -99,23 +100,19 @@ def run_3d_simulation(
         size=(1280, 720),
     )
 
-    # Konfigurasi jendela & latar belakang gelap elegan (menggunakan color.rgb32 agar tidak over-exposed putih)
-    window.color = color.rgb32(22, 26, 34)
+    # Konfigurasi jendela & latar belakang gelap elegan
+    window.color = color.rgb32(20, 24, 32)
     window.fps_counter.enabled = True
     window.exit_button.visible = False
 
     # =========================================================================
     # PENCAHAYAAN (LIGHTING SYSTEM)
     # =========================================================================
-    # Ambient Light memberikan pencahayaan dasar merata
     AmbientLight(color=color.rgba(0.65, 0.65, 0.65, 1.0))
-
-    # Directional Light (matahari) memberikan bayangan & kedalaman dimensi 3D
     sun_light = DirectionalLight(shadows=False)
     sun_light.look_at(Vec3(0.6, -1.2, 0.8))
 
     # Konversi koordinat grid (x, y) ke koordinat dunia 3D Ursina (X, Y, Z)
-    # Pusatkan grid pada origin (0, 0, 0)
     center_offset_x = (grid_map.width - 1) / 2.0
     center_offset_z = (grid_map.height - 1) / 2.0
 
@@ -136,14 +133,14 @@ def run_3d_simulation(
         model='cube',
         position=Vec3(0, -0.25, 0),
         scale=Vec3(floor_w, 0.5, floor_h),
-        color=color.rgb32(32, 36, 44),
+        color=color.rgb32(30, 34, 42),
     )
 
-    # Petak-petak lantai grid (selang-seling warna abu gelap industrial)
+    # Petak-petak lantai grid
     for x in range(grid_map.width):
         for y in range(grid_map.height):
             pos = grid_to_world(x, y, 0.01)
-            tile_col = color.rgb32(48, 54, 65) if (x + y) % 2 == 0 else color.rgb32(40, 45, 54)
+            tile_col = color.rgb32(46, 52, 64) if (x + y) % 2 == 0 else color.rgb32(38, 43, 52)
             Entity(
                 model='plane',
                 position=pos,
@@ -152,7 +149,7 @@ def run_3d_simulation(
             )
 
     # Dinding pembatas luar gudang
-    wall_col = color.rgb32(68, 76, 90)
+    wall_col = color.rgb32(65, 74, 88)
     wall_h = 1.3
     wall_t = 0.35
     Entity(model='cube', position=Vec3(0, wall_h / 2, floor_h / 2), scale=Vec3(floor_w, wall_h, wall_t), color=wall_col)
@@ -175,7 +172,7 @@ def run_3d_simulation(
                     scale=Vec3(0.88, 1.4, 0.88),
                     color=shelf_frame_col,
                 )
-                # Batang aksen penahan rak
+                # Balok rak oranye
                 Entity(parent=rack, model='cube', position=Vec3(0, 0.1, 0), scale=Vec3(1.02, 0.12, 1.02), color=shelf_beam_col)
                 # Kardus barang di atas rak
                 Entity(parent=rack, model='cube', position=Vec3(0, 0.45, 0), scale=Vec3(0.65, 0.45, 0.65), color=cargo_box_col)
@@ -187,13 +184,13 @@ def run_3d_simulation(
     start_pos = grid_to_world(grid_map.start[0], grid_map.start[1], 0.05)
     goal_pos = grid_to_world(grid_map.goal[0], grid_map.goal[1], 0.05)
 
-    # Titik Start (Charging Station Hijau Terang)
+    # Titik Start (Platform Docking Hijau Terang)
     Entity(model=Cylinder(resolution=16), position=start_pos, scale=Vec3(0.92, 0.1, 0.92), color=color.rgb32(46, 204, 113))
     Text(text="START", position=start_pos + Vec3(0, 1.3, 0), scale=1.4, color=color.rgb32(46, 204, 113), billboard=True, origin=(0, 0))
 
     # Titik Goal (Target Kargo Emas/Merah)
     Entity(model=Cylinder(resolution=16), position=goal_pos, scale=Vec3(0.92, 0.1, 0.92), color=color.rgb32(231, 76, 60))
-    Entity(model='cube', position=goal_pos + Vec3(0, 0.4, 0), scale=Vec3(0.62, 0.62, 0.62), color=color.rgb32(241, 196, 15))
+    Entity(model='cube', position=goal_pos + Vec3(0, 0.4, 0), scale=Vec3(0.65, 0.65, 0.65), color=color.rgb32(241, 196, 15))
     Text(text="GOAL", position=goal_pos + Vec3(0, 1.4, 0), scale=1.4, color=color.rgb32(231, 76, 60), billboard=True, origin=(0, 0))
 
     # =========================================================================
@@ -206,22 +203,22 @@ def run_3d_simulation(
     )
 
     # Bodi utama AGV (Kuning Oranye Keselamatan)
-    Entity(parent=robot_root, model='cube', position=Vec3(0, 0, 0), scale=Vec3(0.72, 0.28, 0.72), color=color.rgb32(245, 170, 20))
+    Entity(parent=robot_root, model='cube', position=Vec3(0, 0, 0), scale=Vec3(0.74, 0.28, 0.74), color=color.rgb32(245, 170, 20))
     # Bumper pelindung benturan hitam
-    Entity(parent=robot_root, model='cube', position=Vec3(0, -0.08, 0), scale=Vec3(0.78, 0.1, 0.78), color=color.rgb32(28, 28, 32))
+    Entity(parent=robot_root, model='cube', position=Vec3(0, -0.08, 0), scale=Vec3(0.80, 0.1, 0.80), color=color.rgb32(28, 28, 32))
     # Sensor LIDAR scanner biru toska
     lidar_sensor = Entity(parent=robot_root, model=Cylinder(resolution=16), position=Vec3(0, 0.22, 0.18), scale=Vec3(0.24, 0.18, 0.24), color=color.rgb32(26, 188, 156))
     # Lampu depan LED kembar
-    Entity(parent=robot_root, model='sphere', position=Vec3(0.22, 0.02, 0.36), scale=Vec3(0.11, 0.08, 0.08), color=color.white)
-    Entity(parent=robot_root, model='sphere', position=Vec3(-0.22, 0.02, 0.36), scale=Vec3(0.11, 0.08, 0.08), color=color.white)
+    Entity(parent=robot_root, model='sphere', position=Vec3(0.22, 0.02, 0.38), scale=Vec3(0.11, 0.08, 0.08), color=color.white)
+    Entity(parent=robot_root, model='sphere', position=Vec3(-0.22, 0.02, 0.38), scale=Vec3(0.11, 0.08, 0.08), color=color.white)
     # Muatan paket kargo di atas robot
-    Entity(parent=robot_root, model='cube', position=Vec3(0, 0.24, -0.12), scale=Vec3(0.42, 0.28, 0.42), color=color.rgb32(150, 105, 65))
+    Entity(parent=robot_root, model='cube', position=Vec3(0, 0.24, -0.12), scale=Vec3(0.44, 0.28, 0.44), color=color.rgb32(150, 105, 65))
 
     # =========================================================================
-    # SISTEM KAMERA TERPUSAT
+    # SISTEM KAMERA TERPUSAT (DISESUAIKAN UNTUK GRID 30x20)
     # =========================================================================
 
-    camera.fov = 52
+    camera.fov = 54
     free_cam = EditorCamera(enabled=False)
     cam_modes = ["isometrik", "topdown", "bebas"]
     cam_state = {"mode_idx": 0}
@@ -231,11 +228,11 @@ def run_3d_simulation(
         center_target = Vec3(0, 0, 0)
         if mode == "isometrik":
             free_cam.disable()
-            camera.position = Vec3(0, 22.0, -18.0)
+            camera.position = Vec3(0, 27.0, -22.5)
             camera.look_at(center_target)
         elif mode == "topdown":
             free_cam.disable()
-            camera.position = Vec3(0, 26.0, 0.001)
+            camera.position = Vec3(0, 31.0, 0.001)
             camera.look_at(center_target)
         elif mode == "bebas":
             free_cam.enable()
@@ -250,38 +247,39 @@ def run_3d_simulation(
     # =========================================================================
 
     current_algo = {"name": active_algo}
-    path_entities: List[Entity] = []
+    preview_entities: List[Entity] = []   # Titik-titik penanda rute yang belum dilewati
+    trail_entities: List[Entity] = []     # Jejak bercahaya yang ditinggalkan robot
     waypoints: List[Vec3] = []
 
     sim_state = {
         "current_idx": 0,
         "is_moving": auto_start,
-        "speed": 3.4,
+        "speed": 3.8,
         "finished": False,
     }
 
     # =========================================================================
-    # HUD & TEKS STATUS
+    # HUD / PANEL INFORMASI REAL-TIME
     # =========================================================================
 
     hud_panel = Entity(
         parent=camera.ui,
         model='quad',
-        position=Vec3(-0.54, 0.35, 0),
-        scale=Vec3(0.66, 0.26, 1),
-        color=color.rgba32(15, 20, 28, 220),
+        position=Vec3(-0.52, 0.33, 0),
+        scale=Vec3(0.70, 0.28, 1),
+        color=color.rgba32(15, 20, 28, 225),
     )
 
     hud_text = Text(
         parent=hud_panel,
         text="",
-        position=Vec3(-0.48, 0.45, -0.01),
+        position=Vec3(-0.48, 0.44, -0.01),
         scale=1.05,
         color=color.white,
     )
 
     def refresh_hud(status_override: Optional[str] = None):
-        """Memperbarui informasi pada panel HUD."""
+        """Memperbarui teks informasi kinerja dan status robot secara real-time."""
         algo = current_algo["name"]
         res = results_dict.get(algo)
         path = res.path if res else []
@@ -289,68 +287,119 @@ def run_3d_simulation(
         nodes_str = f"{res.nodes_explored}" if res else "-"
         time_str = f"{res.execution_time_ms:.2f} ms" if res else "-"
 
+        # Label status keoptimalan
         if "A*" in algo:
-            teori_str = "Optimal (Rute Terpendek)"
+            badge = "[JALUR OPTIMAL - TERPENDEK]"
+            trail_name = "Hijau Neon"
         else:
-            teori_str = "Suboptimal (Greedy / Memutar)"
+            badge = "[RUTE SUBOPTIMAL - GREEDY]"
+            trail_name = "Oranye Api"
 
         if status_override:
             status_str = status_override
         elif sim_state["finished"]:
-            status_str = "SELESAI (Sampai di Tujuan)"
+            status_str = "SELESAI (Sampai di Titik Tujuan!)"
         elif sim_state["is_moving"]:
-            status_str = "Sedang Bergerak..."
+            status_str = "Sedang Menavigasi Lorong..."
         else:
             status_str = "DIJEDA (Paused)"
 
+        total_steps = len(path)
+        cur_step = min(sim_state["current_idx"] + 1, total_steps)
+        pct = (cur_step / total_steps * 100.0) if total_steps > 0 else 0.0
+
         hud_text.text = (
             f"SIMULASI ROBOT GUDANG 3D (KKA)\n"
-            f"Algoritma Aktif   : {algo} [{teori_str}]\n"
-            f"Panjang Jalur     : {len(path)} sel (Cost: {cost_str})\n"
-            f"Simpul Eksplorasi : {nodes_str} simpul | Waktu: {time_str}\n"
+            f"Algoritma Aktif   : {algo} {badge}\n"
+            f"Panjang Rute      : {total_steps} sel (Total Cost: {cost_str})\n"
+            f"Simpul Eksplorasi : {nodes_str} simpul | Waktu Hitung: {time_str}\n"
             f"Status Robot      : {status_str}\n"
-            f"Langkah           : {sim_state['current_idx'] + 1} / {len(path)} (Kecepatan: {sim_state['speed']:.1f}x)"
+            f"Progres Langkah   : {cur_step} / {total_steps} ({pct:.1f}%) | Speed: {sim_state['speed']:.1f}x\n"
+            f"Warna Jejak Trail : {trail_name}"
         )
 
     # =========================================================================
-    # PENGELOLAAN JALUR (PATH GENERATION & SWITCHING)
+    # PENGELOLAAN JALUR & ANIMASI TRAIL
     # =========================================================================
 
+    def get_trail_color() -> color.Color:
+        """Menghasilkan warna jejak khusus untuk tiap algoritma."""
+        if "A*" in current_algo["name"]:
+            return color.rgb32(46, 204, 113)  # Hijau neon (optimal)
+        return color.rgb32(230, 126, 34)      # Oranye api (greedy)
+
+    def spawn_trail_marker(pos: Vec3):
+        """Membuat jejak bercahaya di lantai saat robot melintasi koordinat."""
+        t_col = get_trail_color()
+        # Plat balok jejak di lantai
+        trail_tile = Entity(
+            model='cube',
+            position=Vec3(pos.x, 0.03, pos.z),
+            scale=Vec3(0.58, 0.03, 0.58),
+            color=t_col,
+        )
+        # Titik cahaya terang di tengah
+        trail_core = Entity(
+            parent=trail_tile,
+            model='sphere',
+            position=Vec3(0, 0.5, 0),
+            scale=Vec3(0.35, 0.35, 0.35),
+            color=color.white,
+        )
+        trail_entities.append(trail_tile)
+
     def reset_robot():
-        """Mereset posisi robot ke titik awal rute."""
+        """Mereset posisi robot ke titik awal dan membersihkan jejak lama."""
         sim_state["current_idx"] = 0
         sim_state["finished"] = False
         sim_state["is_moving"] = True
+
+        # Hapus seluruh jejak trail
+        for t in trail_entities:
+            destroy(t)
+        trail_entities.clear()
+
+        # Kembalikan penanda preview rute
+        for p in preview_entities:
+            p.visible = True
+
         if waypoints:
             robot_root.position = waypoints[0]
             robot_root.rotation_y = 0.0
-            for dot in path_entities:
-                dot.color = color.rgb32(41, 128, 185)
+            spawn_trail_marker(waypoints[0])
+            if preview_entities:
+                preview_entities[0].visible = False
+
         refresh_hud("Mulai Ulang...")
 
     def load_algorithm_path(algo_name: str):
-        """Memuat rute dari algoritma yang dipilih ke dunia 3D."""
-        nonlocal waypoints, path_entities
+        """Memuat rute dari algoritma yang dipilih dan menyegarkan tampilan jalur."""
+        nonlocal waypoints, preview_entities, trail_entities
         current_algo["name"] = algo_name
 
-        # Hapus penanda rute lama
-        for e in path_entities:
+        # Bersihkan elemen penanda rute lama
+        for e in preview_entities:
             destroy(e)
-        path_entities.clear()
+        preview_entities.clear()
+
+        for t in trail_entities:
+            destroy(t)
+        trail_entities.clear()
 
         res = results_dict.get(algo_name)
         active_path = res.path if res else []
 
-        # Buat penanda titik jalur baru berwarna biru cerah
+        # Buat penanda preview titik rute di lantai
+        preview_color = color.rgb32(55, 75, 105)
         for pt in active_path:
-            p_pos = grid_to_world(pt[0], pt[1], 0.08)
+            p_pos = grid_to_world(pt[0], pt[1], 0.07)
             dot = Entity(
                 model='sphere',
                 position=p_pos,
-                scale=Vec3(0.24, 0.24, 0.24),
-                color=color.rgb32(41, 128, 185),  # Biru laut terang
+                scale=Vec3(0.20, 0.20, 0.20),
+                color=preview_color,
             )
-            path_entities.append(dot)
+            preview_entities.append(dot)
 
         # Siapkan koordinat waypoint 3D
         waypoints = [grid_to_world(pt[0], pt[1], 0.18) for pt in active_path]
@@ -388,7 +437,7 @@ def run_3d_simulation(
 
     def adjust_speed(delta: float):
         """Menyesuaikan kecepatan pergerakan robot."""
-        sim_state["speed"] = max(0.8, min(10.0, sim_state["speed"] + delta))
+        sim_state["speed"] = max(1.0, min(12.0, sim_state["speed"] + delta))
         refresh_hud()
 
     # =========================================================================
@@ -445,7 +494,7 @@ def run_3d_simulation(
         scale=Vec3(0.12, btn_h, 1),
         color=color.rgb32(44, 62, 80),
         text_size=0.8,
-        on_click=lambda: adjust_speed(-0.8),
+        on_click=lambda: adjust_speed(-1.0),
     )
     Button(
         text="Cepat (+)",
@@ -453,7 +502,7 @@ def run_3d_simulation(
         scale=Vec3(0.12, btn_h, 1),
         color=color.rgb32(44, 62, 80),
         text_size=0.8,
-        on_click=lambda: adjust_speed(0.8),
+        on_click=lambda: adjust_speed(1.0),
     )
 
     # 6. Tombol Keluar
@@ -470,11 +519,11 @@ def run_3d_simulation(
     load_algorithm_path(active_algo)
 
     # =========================================================================
-    # LOGIKA FRAME PER FRAME (UPDATE & INPUT)
+    # LOGIKA FRAME PER FRAME (UPDATE & SMOOTH INTERPOLATION)
     # =========================================================================
 
     def update():
-        # Putar sensor LIDAR agar tampak aktif
+        # Sensor LIDAR scanner berputar terus
         lidar_sensor.rotation_y += 360 * time.dt
 
         if not sim_state["is_moving"] or sim_state["finished"]:
@@ -490,7 +539,7 @@ def run_3d_simulation(
             sim_state["finished"] = True
             sim_state["is_moving"] = False
             btn_play_pause.text = "Selesai!"
-            refresh_hud("SELESAI (Sampai di Tujuan!)")
+            refresh_hud("SELESAI (Sampai di Titik Tujuan!)")
             return
 
         target_pos = waypoints[target_idx]
@@ -499,24 +548,26 @@ def run_3d_simulation(
         dir_vec = target_pos - current_pos
         dist = math.sqrt(dir_vec.x ** 2 + dir_vec.z ** 2)
 
-        # Rotasi robot menghadap ke waypoint berikutnya
+        # Rotasi halus robot menghadap ke waypoint berikutnya (lerp_angle)
         if dist > 0.01:
             target_angle = math.degrees(math.atan2(dir_vec.x, dir_vec.z))
-            robot_root.rotation_y = target_angle
+            robot_root.rotation_y = lerp_angle(robot_root.rotation_y, target_angle, time.dt * 12.0)
 
-        # Langkah pergerakan robot
+        # Translasi pergerakan robot
         step = sim_state["speed"] * time.dt
         if dist <= step:
+            # Robot mencapai titik waypoint saat ini
             robot_root.position = target_pos
             sim_state["current_idx"] = target_idx
 
-            # Tandai titik jalur yang telah dilewati menjadi hijau
-            if target_idx < len(path_entities):
-                path_entities[target_idx].color = color.rgb32(46, 204, 113)
+            # Sembunyikan titik preview dan tinggalkan jejak bercahaya di lantai
+            if target_idx < len(preview_entities):
+                preview_entities[target_idx].visible = False
+            spawn_trail_marker(target_pos)
 
             refresh_hud()
         else:
-            # Gerak translasi linier
+            # Interpolasi linier menuju waypoint
             robot_root.position += Vec3(dir_vec.x / dist, 0, dir_vec.z / dist) * step
 
     def input(key):
@@ -529,9 +580,9 @@ def run_3d_simulation(
         elif key == 'v':
             cycle_camera()
         elif key in ('+', '=', 'up arrow'):
-            adjust_speed(0.8)
+            adjust_speed(1.0)
         elif key in ('-', 'down arrow'):
-            adjust_speed(-0.8)
+            adjust_speed(-1.0)
         elif key == 'escape':
             application.quit()
 
