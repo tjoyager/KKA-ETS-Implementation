@@ -70,9 +70,10 @@ Pastikan komputer Anda sudah terpasang **Python 3.9 - 3.12**.
    ```bash
    pip install -r requirements.txt
    ```
-   *(Opsional)* Jika sistem Ubuntu Anda belum memiliki driver OpenGL standar:
+   *(Opsional - Khusus Ubuntu jika OpenGL belum ada)*:
+   Pada Ubuntu 22.04 / 24.04 LTS (Noble), gunakan paket modern `libgl1`:
    ```bash
-   sudo apt update && sudo apt install -y libgl1-mesa-glx
+   sudo apt update && sudo apt install -y libgl1 libglx-mesa0
    ```
 
 ---
