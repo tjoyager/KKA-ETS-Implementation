@@ -12,6 +12,7 @@ venv.bak/
 
 # Ursina / Panda3D cache
 .ursina/
+models_compressed/
 
 # OS and Editor
 .DS_Store

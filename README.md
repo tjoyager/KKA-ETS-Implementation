@@ -1,175 +1,160 @@
-# 🤖 Simulasi Robot Gudang 3D (Autonomous Warehouse AGV)
+# 🤖 Simulasi Robot Gudang 3D (Autonomous Warehouse AGV Simulator)
 > **Tugas / Proyek Kuliah Konsep Kecerdasan Artificial (KKA)**  
-> Simulasi robot pengangkut barang otomatis (*Automated Guided Vehicle* / AGV) bernavigasi di dalam gudang menggunakan algoritma **Informed Search (A\* Search vs Greedy Best-First Search)** dengan visualisasi 3D interaktif berbasis **Ursina Engine**.
+> Simulator robot gudang otonom (*Automated Guided Vehicle* / AGV) skala **50x50** berbasis **Ursina Engine (Panda3D)** dengan arsitektur modular, interaktivitas penuh *Point-and-Click* (Raycasting), balapan dual-robot (**A\* Search vs Greedy Best-First Search**), dan antarmuka HUD ganda (*Industrial WMS vs Gamification*).
 
 ---
 
-## 📌 Ringkasan Proyek
+## 📌 Ringkasan Pembaruan Arsitektur Besar (Massive Refactoring)
 
-Proyek ini mendemonstrasikan perbandingan dua algoritma pencarian jalur berinformasi (*Informed Search*) untuk robot gudang:
-1. **A\* Search**: Algoritma yang mengevaluasi biaya aktual dari titik awal $g(n)$ ditambah perkiraan sisa jarak ke tujuan $h(n)$ ($f(n) = g(n) + h(n)$). Menjamin ditemukannya jalur **terpendek dan optimal**.
-2. **Greedy Best-First Search (GBFS)**: Algoritma yang hanya mengandalkan nilai perkiraan heuristik $h(n)$ ($f(n) = h(n)$). Bekerja sangat cepat mengeksplorasi sedikit simpul, namun rentan terjebak rute memutar (**suboptimal**).
-
-Visualisasi 3D dirancang menggunakan **Ursina Engine** (Panda3D) yang sangat ringan (*lightweight*), tidak membutuhkan ROS/Gazebo, dan dapat langsung dijalankan dengan mulus di **Windows**, **Ubuntu / Linux**, maupun **macOS**.
+Codebase telah dirombak secara menyeluruh dari skrip monolitik menjadi arsitektur modular modern berbasis pemisahan tanggung jawab:
+- 🧠 **Kognisi (`src/cognition/`)**: Logika representasi graf gudang 50x50, fungsi heuristik matematika (*Manhattan, Euclidean, Octile*), serta algoritma *Informed Search* dan perencana rute konkuren dual-robot (*Dual Path Planner*).
+- ⚙️ **Behavior (`src/behavior/`)**: Kinematika pergerakan robot otonom (*smooth waypoint translation*, interpolasi sudut hadap *lerp_angle*, animasi pemuatan kargo, dan penanda jejak bercahaya *trajectory trail*), serta *Mission Manager*.
+- 🌐 **Environment (`src/environment/`)**: Pemuatan aset 3D eksternal (`.obj` / `.gltf`) dengan *graceful procedural fallback*, perakitan pemandangan 3D gudang skala 50x50 dengan **Floor Texture Tiling**, **Static Mesh Combining** (melebur ratusan rak dan dinding menjadi single mesh), serta pemisahan entitas rak interaktif (*Interactive Shelf* ber-Collider ringan tanpa beban draw call).
+- 💬 **Komunikasi (`src/communication/`)**: Sistem raycasting mouse (*Point-and-Click* state-machine), HUD Mode Serius (*Industrial WMS Telemetry & Bottleneck Radar*), HUD Mode Gamifikasi (*Time-Attack & Star Rating*), serta UI Controller.
+- ⚡ **Asynchronous Loading Lifecycle**: Inisialisasi lingkungan menggunakan generator coroutine dengan layar *loading screen* dinamis ("MEMUAT ARENA 50x50... MOHON TUNGGU") yang mencegah jendela freeze / not responding saat startup.
 
 ---
 
-## 📂 Struktur Direktori
+## 🚀 8 Fitur Utama yang Telah Diimplementasikan
+
+### 1. Skala Arena 50x50 & Generator Tata Letak Kompleks
+- Dimensi grid disesuaikan menjadi **50x50 sel** (2.500 sel).
+- Generator denah gudang otomatis membangun struktur tata letak realistis:
+  - **Lorong Arteri Utama (*Cross Aisles*)**: Lebar 3 sel di $y = 10..12, 24..26, 38..40$ dan $x = 10..12, 24..26, 38..40$ untuk pergerakan bebas hambatan.
+  - **Blok Rak Palet Ganda (*Double-Deep Racks*)**: Ratusan rak berbaris memanjang dipisahkan lorong sempit (*narrow aisles*) selebar 2 sel.
+  - **Sekat Partisi Labirin (*Cul-de-Sacs*)**: Jebakan buntu proporsional yang secara teoritis memancing kelemahan GBFS ($f=h$) agar terbentur dinding, membuktikan keunggulan matematis A* ($f=g+h$).
+
+### 2. Titik Start Statis (Standby Dock Area)
+- Posisi *spawn* awal kedua robot terkunci secara absolut di pojok kiri bawah arena:
+  - **AGV Alpha (A\* Search)**: Terkunci di Dock `(1, 1)`.
+  - **AGV Beta (GBFS)**: Terkunci di Dock `(1, 3)`.
+- Dilengkapi platform pengisian daya 3D (*Charging Pad Platform*) dengan label penanda melayang.
+
+### 3. Interaktivitas Raycasting (Point-and-Click)
+- **Bebas Dependensi Terminal**: Program tidak lagi meminta input teks melalui CLI; simulasi langsung membuka jendela 3D interaktif secara instan.
+- **Komponen Collider**: Setiap rak dan kotak kargo memiliki komponen `collider='box'`.
+- **State-Machine Dua Langkah**:
+  - **Klik 1 (Pick-up)**: Klik rak atau kotak kargo yang ada barangnya untuk menjadikannya titik jemput (ditandai cincin cahaya *Cyan Neon*).
+  - **Klik 2 (Drop-off)**: Klik rak kosong mana saja sebagai tujuan pengantaran (ditandai cincin cahaya *Magenta Neon*).
+  - Sistem langsung meluncurkan balapan kedua robot secara otomatis!
+
+### 4. Entitas Rak Dinamis (Graph Access Nodes)
+- Rak bukan sekadar balok rintangan statis, melainkan *node* graf tujuan yang interaktif.
+- Algoritma *pathfinding* secara cerdas mencari rute menuju **Access Node** (sel lorong tetangga terdekat yang dapat dilalui robot) dari rak terpilih.
+
+### 5. Dukungan Aset Model 3D Eksternal (.obj / .gltf)
+- Kerangka folder `assets/models/` menyediakan model 3D Wavefront `.obj` siap pakai:
+  - `agv.obj`: Robot AGV industri lengkap dengan sasis, bumper, dek kargo, dan tower sensor.
+  - `shelf.obj`: Rak palet penyimpanan bertingkat (*multi-tier rack*).
+  - `cargo.obj`: Kotak kontainer kargo logistik.
+  - `dock.obj`: Bantalan stasiun pengisian daya otomatis.
+- **Mekanisme Graceful Fallback**: Jika berkas eksternal belum tersedia atau gagal dimuat, `AssetLoader` secara otomatis melakukan *fallback* ke model prosedural modular tanpa pernah mengalami *crash*.
+- Disertai dokumentasi lengkap dan tautan pengunduhan model 3D di [assets/models/README.md](assets/models/README.md).
+
+### 6. Simulasi Balapan Dual-Robot (A* Search vs GBFS)
+- Instansiasi dua *controller* AGV independen yang berlaga serentak:
+  - **AGV Alpha (Electric Cyan)**: Dikendalikan oleh algoritma **A\* Search** (Jalur Optimal dengan *Neon Green Trail*).
+  - **AGV Beta (Vivid Amber)**: Dikendalikan oleh algoritma **Greedy Best-First Search** (Jalur Heuristik Cepat dengan *Fiery Orange Trail*).
+- Kalkulasi rute konkuren dua etape (*Leg 1: Spawn $\rightarrow$ Pick-up, Leg 2: Pick-up $\rightarrow$ Drop-off*).
+- Pengguna dapat menyaksikan langsung bagaimana GBFS tergiur lorong buntu karena hanya mengandalkan $h(n)$, sementara A* menavigasi lorong tengah secara efisien dan memenangkan keoptimalan rute.
+
+### 7. HUD Mode Ganda (Serious vs Gamification)
+Beralih instan antara dua mode tampilan hanya dengan menekan tombol **`[M]`** pada keyboard atau mengklik tombol layar:
+- **Mode Serious (Warehouse Management System Analytics)**:
+  - Tabel telemetri industri komparatif: Biaya rute (*Cost*), Simpul dieksplorasi (*Nodes Explored*), Waktu eksekusi milidetik (*Execution Time ms*), dan progres langkah.
+  - Radar Bottleneck Jaringan: Deteksi sel lorong bersama (*shared corridor cells*) dan indeks kemacetan (*congestion risk*).
+  - Status armada AGV real-time.
+- **Mode Gamifikasi (Arcade Logistics Rush)**:
+  - **Time-Attack Stopwatch**: Pelacak waktu misi berdetik milidetik.
+  - **Sistem Skor & Combo Multiplier**: Akumulasi poin berdasarkan kecepatan dan keoptimalan pengiriman (Combo x1, x2, x3...).
+  - **Rating Bintang (1 - 5 Bintang ⭐⭐⭐⭐⭐)**: Penilaian objektif berdasarkan rasio panjang rute terhadap rute optimal teoritis.
+  - Banner Pengumuman Juara Balapan dinamis.
+
+---
+
+## 📂 Struktur Direktori Modular
 
 ```text
 KKA-ETS-Implementation/
+├── assets/
+│   └── models/               # Berkas model 3D eksternal & dokumentasi unduhan
+│       ├── agv.obj
+│       ├── shelf.obj
+│       ├── cargo.obj
+│       ├── dock.obj
+│       └── README.md
 │
 ├── src/
-│   ├── __init__.py           # Inisialisasi paket Python
-│   ├── map_grid.py           # Logika grid 2D: rak rintangan, lorong, start, & goal
-│   ├── algorithms.py         # Implementasi A* Search, GBFS, heuristik Manhattan/Euclidean
-│   └── simulation_3d.py      # Visualisasi 3D Ursina: AGV 3D, rak gudang, kamera, & tombol UI
+│   ├── config.py             # Konstanta global, koordinat grid 100x100, warna, & preset kamera
+│   │
+│   ├── cognition/            # [KOGNISI] Logika Graf & Algoritma Pathfinding
+│   │   ├── heuristics.py     # Manhattan, Euclidean, Octile, Chebyshev
+│   │   ├── warehouse_graph.py# Graf grid 100x100, generator tata letak, & access nodes rak
+│   │   └── pathfinding.py    # A* Search, GBFS, DualPathPlanner konkuren
+│   │
+│   ├── behavior/             # [BEHAVIOR] Kontrol Kinematika & Misi Robot
+│   │   ├── robot_controller.py # AGV Controller, lerp heading, lidar rotasi, kargo dek, trail
+│   │   └── mission_manager.py  # Dispatcher balapan dual-robot, stopwatch, skor, & winner logic
+│   │
+│   ├── environment/          # [ENVIRONMENT] Pemandangan 3D & Aset
+│   │   ├── asset_loader.py   # Loader model eksternal aman dengan graceful fallback
+│   │   ├── interactive_shelf.py# Entitas rak 3D ber-Collider dengan deteksi klik & seleksi
+│   │   └── warehouse_scene.py# Konstruksi lantai 100x100, dinding, docking pad, pencahayaan
+│   │
+│   ├── communication/        # [KOMUNIKASI] Antarmuka Interaktif
+│   │   ├── interaction_system.py # Raycast mouse hover & state-machine klik
+│   │   ├── hud_serious.py    # Dashboard analitik industri WMS
+│   │   ├── hud_gamification.py # Arcade UI: Time-Attack, skor, combo, & bintang
+│   │   └── ui_controller.py  # Master UI: tombol layar & handler hotkey keyboard
+│   │
+│   └── simulation.py         # Koordinator aplikasi utama Ursina Engine
 │
-├── requirements.txt          # Daftar pustaka (numpy, ursina)
-├── .gitignore                # Berkas yang diabaikan Git (venv, __pycache__)
-├── README.md                 # Dokumentasi panduan penggunaan & analisis KKA
-└── main.py                   # Berkas utama peluncur program
+├── requirements.txt          # Dependensi (numpy>=1.24.0, ursina>=6.0.0)
+├── README.md                 # Dokumentasi panduan lengkap
+└── main.py                   # Berkas peluncur langsung (tanpa dependensi terminal)
 ```
 
 ---
 
-## 🛠️ Langkah Instalasi Cepat (Pemula-Friendly)
+## 🛠️ Instalasi & Menjalankan Program
 
-Pastikan komputer Anda sudah terpasang **Python 3.9 - 3.12**.
+### 🔹 Persyaratan Sistem
+- **Python**: Versi 3.9 s.d. 3.12
+- Pustaka: `numpy`, `ursina`
 
-### 🔹 Untuk Pengguna Windows
-1. **Buka terminal**: Tekan `Win + R`, ketik `powershell` atau `cmd`, lalu tekan Enter.
-2. Masuk ke folder proyek:
-   ```powershell
-   cd "path\ke\KKA-ETS-Implementation"
-   ```
-3. Buat dan aktifkan *Virtual Environment* (disarankan agar rapi):
-   ```powershell
-   python -m venv venv
+### 🔹 Langkah Eksekusi (Windows & Linux)
+1. Aktifkan virtual environment Anda:
+   ```bash
+   # Linux / Ubuntu
+   source venv/bin/activate
+
+   # Windows
    .\venv\Scripts\activate
    ```
-4. Pasang pustaka yang dibutuhkan:
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
----
-
-### 🔹 Untuk Pengguna Ubuntu / Linux
-1. **Buka Terminal** (`Ctrl + Alt + T`).
-2. Masuk ke folder proyek:
-   ```bash
-   cd "path/ke/KKA-ETS-Implementation"
-   ```
-3. Buat dan aktifkan *Virtual Environment*:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-4. Pasang pustaka pendukung:
+2. Pastikan paket dependensi terpasang:
    ```bash
    pip install -r requirements.txt
    ```
-   *(Opsional - Khusus Ubuntu jika OpenGL belum ada)*:
-   Pada Ubuntu 22.04 / 24.04 LTS (Noble), gunakan paket modern `libgl1`:
+3. Jalankan simulator:
    ```bash
-   sudo apt update && sudo apt install -y libgl1 libglx-mesa0
+   python main.py
    ```
+   *(Jendela 3D interaktif 1280x720 akan langsung terbuka tanpa pertanyaan di terminal!)*
 
 ---
 
-## 🚀 Cara Menjalankan Program (Paling Mudah)
+## 🎮 Panduan Kontrol & Pintasan Keyboard
 
-Anda **tidak perlu** mengetik perintah atau argumen yang panjang. Cukup jalankan perintah berikut:
-
-```bash
-python main.py
-```
-*(atau `python3 main.py`)*
-
-Program akan menampilkan **Menu Interaktif Sederhana**:
-```text
-===================================================================
-      SIMULASI ROBOT GUDANG 3D - KECERDASAN BUATAN (KKA)
-         Navigasi Informed Search: A* Search vs GBFS
-===================================================================
-
-Silakan pilih mode yang ingin dijalankan:
-  [1] Buka Visualisasi 3D Interaktif (Bisa ganti A* & GBFS di dalam jendela 3D) [Rekomendasi]
-  [2] Tampilkan Tabel Perbandingan & Analisis Teori KKA di Terminal
-  [3] Mode Terminal Saja (Tampilkan Peta ASCII & Metrik tanpa GUI)
-  [4] Keluar
-
-Masukkan pilihan Anda [1-4] (Tekan ENTER untuk Opsi 1): 
-```
-
-> 💡 **Cukup tekan `[ENTER]`**, dan jendela visualisasi 3D akan langsung terbuka secara otomatis!
-
----
-
-## 🎮 Panduan Kontrol Simulasi 3D
-
-Saat jendela visualisasi 3D terbuka, seluruh kontrol dapat diakses dengan **dua cara**:
-1. **Mengklik Tombol UI langsung di layar monitor** (terletak di bagian bawah layar).
-2. **Menggunakan Tombol Keyboard**:
-
-| Tombol Keyboard | Tombol UI di Layar | Fungsi & Keterangan |
-| :---: | :---: | :--- |
-| **`[Tab]`** | **`[Ganti Algoritma]`** | **Fitur Unggulan**: Beralih rute secara langsung antara **A\* Search** dan **GBFS** tanpa me-restart simulasi! Robot akan otomatis kembali ke titik awal dan menelusuri rute baru. |
-| **`[Spasi]`** | **`[Jeda / Lanjut]`** | Menjeda (*pause*) atau melanjutkan pergerakan robot AGV. |
-| **`[R]`** | **`[Reset]`** | Mengulang pergerakan robot kembali ke titik awal (*Start Dock*). |
-| **`[V]`** | **`[Kamera: ...]`** | Mengganti sudut pandang kamera: **Isometrik** $\rightarrow$ **Tampak Atas (Top-Down 2D)** $\rightarrow$ **Bebas (Free Orbit)**. |
-| **`[+]` / `[-]`** | **`[Cepat] / [Lambat]`** | Menambah atau memperlambat laju kecepatan robot. |
-| **Klik Kanan + Drag** | *(Khusus Mode Bebas)* | Memutar / mengorbit kamera di sekitar gudang untuk melihat detail 3D dari segala sisi. |
+| Kontrol Input | Tombol Layar | Fungsi & Keterangan |
+| :--- | :--- | :--- |
+| **Klik Kiri Mouse** | - | **Raycasting Point-and-Click**: Klik 1 pada rak kargo (Pick-up), Klik 2 pada rak kosong (Drop-off). |
+| **`[M]`** | **`[Mode HUD]`** | **Toggle HUD Mode Ganda**: Beralih antara **Serious (WMS Analytics)** dan **Gamifikasi (Arcade)**. |
+| **`[G]`** | **`[Misi Acak]`** | **Instan Random Race**: Otomatis memilih sepasang rak acak dan langsung meluncurkan balapan! |
+| **`[Spasi]`** | **`[Jeda / Lanjut]`** | Menjeda (*pause*) atau melanjutkan pergerakan armada AGV. |
+| **`[R]`** | **`[Reset]`** | Mengembalikan kedua robot kembali ke stasiun dock pojok kiri bawah. |
+| **`[V]`** | **`[Kamera: ...]`** | Mengganti sudut kamera: **Isometrik** $\rightarrow$ **Top-Down 2D** $\rightarrow$ **Follow Alpha** $\rightarrow$ **Follow Beta** $\rightarrow$ **Bebas (Free Orbit)**. |
+| **`[1]` / `[2]`** | - | Langsung mengunci kamera mengekor di belakang AGV Alpha / AGV Beta. |
+| **`[+]` / `[-]`** | **`[Cepat] / [Lambat]`** | Menambah atau memperlambat laju kecepatan simulasi. |
+| **Klik Kanan + Drag** | *(Mode Bebas)* | Mengorbit / memutar kamera bebas di sekeliling arena 50x50. |
 | **Scroll Mouse** | - | *Zoom-in* / *Zoom-out* kamera. |
-| **`[Esc]`** | **`[Keluar]`** | Menutup jendela 3D dan kembali ke terminal. |
-
----
-
-## 📊 Hasil Analisis Perbandingan: A* Search vs GBFS
-
-Berikut adalah data metrik riil hasil pencarian rute pada denah gudang labirin kompleks berukuran **30x20 sel**:
-
-```text
-TABEL PERBANDINGAN METRIK KINERJA:
-+----------------------------+------------+----------------+---------------+-----------------------+--------------+
-| Algoritma                  | Status     | Panjang Rute   | Total Biaya   | Simpul Dieksplorasi   | Waktu (ms)   |
-+----------------------------+------------+----------------+---------------+-----------------------+--------------+
-| A* Search                  | SUKSES     | 43 sel         | 42.00         | 188 simpul            | ~3.2 ms      |
-| Greedy Best-First Search   | SUKSES     | 49 sel         | 48.00         | 53 simpul             | ~0.8 ms      |
-+----------------------------+------------+----------------+---------------+-----------------------+--------------+
-```
-
-### 🧠 Analisis Teoritis untuk Laporan Tugas KKA:
-
-1. **Optimalitas Rute ($f(n) = g(n) + h(n)$ vs $f(n) = h(n)$)**:
-   - **A\* Search** berhasil menemukan rute yang **paling pendek dan optimal** dengan total biaya **42.00**. A* mempertimbangkan biaya langkah yang sudah ditempuh $g(n)$, sehingga robot memilih lorong tembus di tengah gudang yang bebas hambatan.
-   - **Greedy Best-First Search (GBFS)** menghasilkan rute **suboptimal** dengan total biaya **48.00** (lebih panjang 6 langkah / +14.3%). Karena hanya berpatokan pada nilai $h(n)$ (jarak terdekat ke Goal), GBFS terburu-buru bergerak lurus ke arah atas sehingga terhalang sekat dinding partisi rak di dekat Goal dan terpaksa memutar jauh ke lorong paling atas.
-
-2. **Efisiensi Eksplorasi Simpul**:
-   - **GBFS** hanya mengeksplorasi **53 simpul** sebelum mencapai tujuan. Pencariannya sangat cepat dan terarah (*greedy*).
-   - **A\*** mengeksplorasi **188 simpul** karena harus menguji lorong-lorong alternatif demi membuktikan secara matematis bahwa tidak ada jalur lain yang lebih pendek.
-
-3. **Visualisasi Jejak Jalur (*Trajectory Trail*) di 3D**:
-   - **A\* Search**: Menghasilkan jejak bercahaya warna **Hijau Neon** yang melintas langsung membelah lorong tengah secara efisien.
-   - **GBFS**: Menghasilkan jejak bercahaya warna **Oranye Api** yang menunjukkan robot tergiur lorong atas sebelum terpaksa berbelok memutar.
-
----
-
-## ⚙️ Opsi Tambahan untuk Pengguna Lanjutan (Opsional)
-
-Jika ingin menjalankan skrip secara otomatis tanpa menu interaktif:
-
-```bash
-# Langsung jalankan rute A* Search
-python main.py --algo astar
-
-# Langsung jalankan rute GBFS
-python main.py --algo gbfs
-
-# Jalankan mode terminal saja tanpa jendela 3D (sangat cocok untuk server/testing)
-python main.py --no-gui
-
-# Menggunakan heuristik Euclidean Distance dengan pergerakan diagonal 8-arah
-python main.py --heuristic euclidean --diagonal
-```
+| **`[Esc]`** | **`[Keluar]`** | Menutup simulator dengan aman. |
