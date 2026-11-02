@@ -1,10 +1,10 @@
-# 📦 Direktori Aset Model 3D Gudang (Warehouse 3D Assets)
+# Direktori Aset Model 3D Gudang (Warehouse 3D Assets)
 
 Direktori ini digunakan untuk menyimpan berkas aset 3D eksternal yang dimuat secara dinamis oleh simulator gudang 3D berbasis **Ursina Engine**.
 
 ---
 
-## 📁 Struktur Berkas Bawaan
+## Struktur Berkas Bawaan
 
 Secara *default*, proyek ini telah menyediakan model Wavefront (`.obj`) *clean low-poly* siap pakai:
 - `agv.obj` : Model robot AGV industri lengkap dengan sasis, bumper pelindung, dek kargo, dan sensor LIDAR.
@@ -16,7 +16,7 @@ Sistem `src/environment/asset_loader.py` akan secara otomatis memuat berkas-berk
 
 ---
 
-## 🌐 Sumber Pengunduhan Model 3D Open-Source Kompatibel
+## Sumber Pengunduhan Model 3D Open-Source Kompatibel
 
 Anda dapat mengganti atau meningkatkan kualitas visual model 3D dengan mengunduh aset gratis (*Royalty-Free / CC0 / CC-BY*) dari repositori berikut:
 
@@ -40,15 +40,15 @@ Anda dapat mengganti atau meningkatkan kualitas visual model 3D dengan mengunduh
 
 ---
 
-## ⚙️ Panduan Format & Integrasi ke Ursina Engine
+## Panduan Format & Integrasi ke Ursina Engine
 
 Ursina Engine (berbasis Panda3D) secara *native* mendukung:
 - **`.obj` (Wavefront OBJ)**: Format paling stabil dan mudah dimodifikasi. Pastikan *face* berupa *quads* atau *triangles*.
 - **`.bam` (Panda3D Binary)**: Format kompresi internal yang otomatis di-cache Ursina di folder `models_compressed/`.
 - **`.gltf` / `.glb`**: Didukung jika pustaka `panda3d-gltf` terpasang (`pip install panda3d-gltf`).
 
-### 🔧 Cara Memasang Model Baru:
+### Cara Memasang Model Baru:
 1. Unduh model 3D pilihan Anda (misalnya model robot AGV baru).
 2. Ubah nama berkas menjadi `agv.obj` (atau sesuaikan konstanta di [src/config.py](../../src/config.py)).
 3. Letakkan di dalam folder `assets/models/`.
-4. Jalankan `python main.py` — model baru akan otomatis dirender di arena 100x100!
+4. Jalankan `python main.py` — model baru akan otomatis dirender di arena 50x50!

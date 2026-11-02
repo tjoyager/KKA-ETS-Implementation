@@ -6,6 +6,7 @@ Menampilkan metrik analitik profesional: tabel komparasi A* vs GBFS, total biaya
 jumlah simpul dieksplorasi, waktu eksekusi milidetik, serta analisis bottleneck jaringan gudang.
 """
 
+import time
 from typing import Optional
 from ursina import Entity, Vec3, color, camera, Text
 
@@ -15,7 +16,8 @@ from src.communication.interaction_system import InteractionSystem
 
 class SeriousHUD:
     """
-    HUD Telemetri Industri WMS dengan visual tabel data presisi tinggi.
+    HUD Telemetri Industri WMS dengan visual tabel data presisi tinggi teroptimasi
+    (Throttle render mesh font untuk mencegah micro-stuttering).
     """
 
     def __init__(self):
@@ -37,14 +39,25 @@ class SeriousHUD:
             color=color.white,
         )
 
+        self._last_update_time: float = 0.0
+        self._last_rendered_text: str = ""
+
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan panel HUD Serious."""
         self.panel.enabled = visible
+        if visible:
+            self._last_rendered_text = ""  # Force refresh saat dibuka kembali
 
     def update(self, mission_mgr: MissionManager, interaction_sys: InteractionSystem):
-        """Memperbarui teks metrik telemetri secara real-time."""
+        """Memperbarui teks metrik telemetri secara efisien dengan dirty-checking dan rate-limiting."""
         if not self.panel.enabled:
             return
+
+        now = time.perf_counter()
+        # Batasi regenerasi text mesh Ursina ke 20 Hz (setiap 0.05s) kecuali baru saja selesai balapan
+        if (now - self._last_update_time < 0.05) and not mission_mgr.race_finished:
+            return
+        self._last_update_time = now
 
         plan = mission_mgr.dual_plan
         robot_a = mission_mgr.robot_alpha
@@ -98,7 +111,7 @@ class SeriousHUD:
         # Evaluasi akhir
         outcome_str = mission_mgr.overall_efficiency_winner if mission_mgr.race_finished else "Sedang Berlangsung..."
 
-        self.text_display.text = (
+        new_text = (
             f"=== WMS TELEMETRY DASHBOARD (50x50 ARENA) ===\n"
             f"Mode HUD          : SERIOUS (INDUSTRIAL WMS) [Tekan 'M' Ganti Mode]\n"
             f"Status Operasi    : {interaction_sys.prompt_text}\n"
@@ -118,3 +131,7 @@ class SeriousHUD:
             f"  Kecepatan Armada         : {mission_mgr.current_speed:.1f}x [Atur dgn +/-]\n"
             f"  Hasil Evaluasi Efisiensi : {outcome_str}"
         )
+
+        if new_text != self._last_rendered_text:
+            self.text_display.text = new_text
+            self._last_rendered_text = new_text

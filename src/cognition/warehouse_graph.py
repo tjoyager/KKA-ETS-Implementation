@@ -77,6 +77,9 @@ class WarehouseGraph100:
         self.shelves: Dict[Coord, ShelfData] = {}
         self.dock_alpha = SPAWN_ALPHA
         self.dock_beta = SPAWN_BETA
+        # Cache tetangga teroptimasi untuk pencarian rute ultra-cepat
+        self._neighbors_4way: Dict[Coord, Tuple[Coord, ...]] = {}
+        self._neighbors_8way: Dict[Coord, Tuple[Coord, ...]] = {}
 
     def is_in_bounds(self, x: int, y: int) -> bool:
         """Memeriksa apakah koordinat (x, y) berada dalam batas 50x50."""
@@ -96,11 +99,49 @@ class WarehouseGraph100:
         if self.is_in_bounds(x, y):
             self.grid[y, x] = int(cell_type)
 
-    def get_neighbors(self, x: int, y: int, allow_diagonal: bool = False) -> List[Coord]:
+    def precompute_adjacency(self) -> None:
+        """
+        Melakukan pra-kalkulasi daftar tetangga walkable untuk traversal 4-arah & 8-arah.
+        Menghilangkan alokasi memori berulang dan mempercepat pathfinding belasan kali lipat.
+        """
+        self._neighbors_4way.clear()
+        self._neighbors_8way.clear()
+        dirs_4 = ((0, 1), (0, -1), (1, 0), (-1, 0))
+        dirs_diag = ((1, 1), (1, -1), (-1, 1), (-1, -1))
+
+        for y in range(self.height):
+            for x in range(self.width):
+                if not self.is_walkable(x, y):
+                    continue
+                coord = (x, y)
+                n4 = []
+                for dx, dy in dirs_4:
+                    nx, ny = x + dx, y + dy
+                    if self.is_walkable(nx, ny):
+                        n4.append((nx, ny))
+                self._neighbors_4way[coord] = tuple(n4)
+
+                n8 = list(n4)
+                for dx, dy in dirs_diag:
+                    nx, ny = x + dx, y + dy
+                    if self.is_walkable(nx, ny):
+                        if self.is_walkable(x + dx, y) and self.is_walkable(x, y + dy):
+                            n8.append((nx, ny))
+                self._neighbors_8way[coord] = tuple(n8)
+
+    def get_neighbors(self, x: int, y: int, allow_diagonal: bool = False):
         """
         Mengambil tetangga walkable yang valid dari koordinat (x, y).
-        Default 4-arah (Utara, Selatan, Timur, Barat).
+        Menggunakan cache pra-kalkulasi instan jika tersedia.
         """
+        coord = (x, y)
+        if allow_diagonal:
+            if self._neighbors_8way and coord in self._neighbors_8way:
+                return self._neighbors_8way[coord]
+        else:
+            if self._neighbors_4way and coord in self._neighbors_4way:
+                return self._neighbors_4way[coord]
+
         directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         if allow_diagonal:
             directions += [(1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -134,7 +175,7 @@ class WarehouseGraph100:
         """
         Mendapatkan titik akses lorong terdekat ke rak.
         Jika from_coord diberikan, mengembalikan access node yang memiliki
-        jarak Manhattan terdekat dari from_coord.
+        jarak Manhattan terdekat dari from_coord (dioptimasi tanpa alokasi lambda).
         """
         shelf = self.shelves.get(shelf_coord)
         access_list = shelf.access_nodes if shelf else self.compute_access_nodes(shelf_coord)
@@ -153,8 +194,17 @@ class WarehouseGraph100:
         if from_coord is None:
             return access_list[0]
 
-        # Pilih titik akses terdekat dengan posisi robot
-        return min(access_list, key=lambda p: abs(p[0] - from_coord[0]) + abs(p[1] - from_coord[1]))
+        # Pilih titik akses terdekat dengan posisi robot (inlined Manhattan distance)
+        best_node = access_list[0]
+        fx, fy = from_coord
+        best_dist = abs(best_node[0] - fx) + abs(best_node[1] - fy)
+        for i in range(1, len(access_list)):
+            node = access_list[i]
+            d = abs(node[0] - fx) + abs(node[1] - fy)
+            if d < best_dist:
+                best_dist = d
+                best_node = node
+        return best_node
 
     def get_random_cargo_shelf(self) -> Optional[ShelfData]:
         """Memilih secara acak satu rak yang memiliki kargo."""
@@ -309,6 +359,9 @@ class WarehouseGraph100:
         # 5. Hitung Access Nodes untuk semua rak yang valid
         for coord, shelf in list(wh.shelves.items()):
             shelf.access_nodes = wh.compute_access_nodes(coord)
+
+        # 6. Pra-kalkulasi tabel tetangga graf untuk performa pencarian rute maksimal
+        wh.precompute_adjacency()
 
         return wh
 

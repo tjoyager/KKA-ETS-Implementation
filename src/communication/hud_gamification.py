@@ -6,6 +6,7 @@ Menampilkan elemen Time-Attack (timer stopwatch), akumulasi skor efisiensi,
 combo multiplier, serta sistem rating bintang 1-5 berdasarkan rasio keoptimalan rute.
 """
 
+import time
 from ursina import Entity, Vec3, color, camera, Text
 
 from src.behavior.mission_manager import MissionManager
@@ -14,7 +15,8 @@ from src.communication.interaction_system import InteractionSystem
 
 class GamificationHUD:
     """
-    HUD Bergaya Video Game Arcade dengan sistem skor, time-attack, dan rating bintang.
+    HUD Bergaya Video Game Arcade dengan sistem skor, time-attack, dan rating bintang
+    teroptimasi (Throttle render mesh font untuk framerate stabil).
     """
 
     def __init__(self):
@@ -54,15 +56,27 @@ class GamificationHUD:
             color=color.white,
         )
 
+        self._last_update_time: float = 0.0
+        self._last_top_text: str = ""
+        self._last_side_text: str = ""
+
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan elemen HUD Gamifikasi."""
         self.top_banner.enabled = visible
         self.side_panel.enabled = visible
+        if visible:
+            self._last_top_text = ""
+            self._last_side_text = ""
 
     def update(self, mission_mgr: MissionManager, interaction_sys: InteractionSystem):
-        """Memperbarui visual skor, bintang, dan waktu balapan."""
+        """Memperbarui visual skor, bintang, dan waktu balapan dengan dirty-checking dan rate-limiting."""
         if not self.top_banner.enabled:
             return
+
+        now = time.perf_counter()
+        if (now - self._last_update_time < 0.05) and not mission_mgr.race_finished:
+            return
+        self._last_update_time = now
 
         # Format Stopwatch Time-Attack
         elapsed = mission_mgr.race_elapsed_time
@@ -72,14 +86,17 @@ class GamificationHUD:
         timer_str = f"{mins:02d}:{secs:02d}.{millis:02d}"
 
         # Bintang visual
-        stars = "⭐" * mission_mgr.star_rating
+        stars = "[*]" * mission_mgr.star_rating
 
         # Teks Banner Atas
-        self.top_text.text = (
-            f"⚡ WAREHOUSE SHOWDOWN: A* SEARCH (CYAN) vs GBFS (ORANGE) ⚡\n"
-            f"⏱️ TIME-ATTACK: {timer_str} | 🏆 SCORE: {mission_mgr.score:,} PTS | 🔥 COMBO: x{mission_mgr.combo_multiplier}\n"
+        new_top = (
+            f"[WAREHOUSE SHOWDOWN] A* SEARCH (CYAN) vs GBFS (ORANGE)\n"
+            f"TIME-ATTACK: {timer_str} | SCORE: {mission_mgr.score:,} PTS | COMBO: x{mission_mgr.combo_multiplier}\n"
             f"RATING MISI: {stars} ({mission_mgr.star_rating}/5) | {mission_mgr.rating_explanation}"
         )
+        if new_top != self._last_top_text:
+            self.top_text.text = new_top
+            self._last_top_text = new_top
 
         # Teks Panel Samping
         plan = mission_mgr.dual_plan
@@ -96,15 +113,18 @@ class GamificationHUD:
         first_arrived = mission_mgr.first_to_arrive if mission_mgr.first_to_arrive else "Menuju Target..."
         efficiency_champ = mission_mgr.overall_efficiency_winner if mission_mgr.race_finished else "Menghitung..."
 
-        self.side_text.text = (
+        new_side = (
             f"STATUS MISI: {interaction_sys.prompt_text}\n"
             f"Misi Terselesaikan: {mission_mgr.missions_completed} Pengiriman\n"
             f"----------------------------------------------------\n"
-            f"🏁 STANDING BALAPAN REAL-TIME:\n"
+            f"STANDING BALAPAN REAL-TIME:\n"
             f"  [CYAN] AGV Alpha (A*)   : Langkah {step_a} | Cost: {cost_a}\n"
             f"  [AMBER] AGV Beta (GBFS) : Langkah {step_b} | Cost: {cost_b}\n"
             f"----------------------------------------------------\n"
-            f"👑 Tiba Pertama di Target: {first_arrived}\n"
-            f"🏅 Juara Efisiensi Energi : {efficiency_champ}\n"
-            f"💡 Hint: Tekan [G] untuk Balapan Acak Instan!"
+            f"Tiba Pertama di Target: {first_arrived}\n"
+            f"Juara Efisiensi Energi : {efficiency_champ}\n"
+            f"Hint: Tekan [G] untuk Balapan Acak Instan!"
         )
+        if new_side != self._last_side_text:
+            self.side_text.text = new_side
+            self._last_side_text = new_side

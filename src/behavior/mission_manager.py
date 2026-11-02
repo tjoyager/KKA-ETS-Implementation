@@ -248,21 +248,21 @@ class MissionManager:
         # Kalkulasi Rating Bintang (1 - 5 Bintang)
         if cost_ratio <= 1.02 and self.race_elapsed_time < 25.0:
             self.star_rating = 5
-            self.rating_explanation = "SEMPURNA (⭐⭐⭐⭐⭐): Rute optimal dieksekusi dengan kecepatan puncak!"
+            self.rating_explanation = "SEMPURNA ([5/5 BINTANG]): Rute optimal dieksekusi dengan kecepatan puncak!"
             self.combo_multiplier += 1
         elif cost_ratio <= 1.08:
             self.star_rating = 4
-            self.rating_explanation = "SANGAT BAIK (⭐⭐⭐⭐): Jalur efisien dengan sedikit deviasi waktu."
+            self.rating_explanation = "SANGAT BAIK ([4/5 BINTANG]): Jalur efisien dengan sedikit deviasi waktu."
             self.combo_multiplier += 1
         elif cost_ratio <= 1.20:
             self.star_rating = 3
-            self.rating_explanation = "CUKUP (⭐⭐⭐): GBFS mengambil rute memutar yang memperlambat armada."
+            self.rating_explanation = "CUKUP ([3/5 BINTANG]): GBFS mengambil rute memutar yang memperlambat armada."
             self.combo_multiplier = 1
         elif cost_ratio <= 1.35:
             self.star_rating = 2
-            self.rating_explanation = "SUB-OPTIMAL (⭐⭐): GBFS terjebak sekat buntu lorong atas gudang."
+            self.rating_explanation = "SUB-OPTIMAL ([2/5 BINTANG]): GBFS terjebak sekat buntu lorong atas gudang."
             self.combo_multiplier = 1
         else:
             self.star_rating = 1
-            self.rating_explanation = "BURUK (⭐): Terjadi inefisiensi navigasi parah pada rute rak."
+            self.rating_explanation = "BURUK ([1/5 BINTANG]): Terjadi inefisiensi navigasi parah pada rute rak."
             self.combo_multiplier = 1

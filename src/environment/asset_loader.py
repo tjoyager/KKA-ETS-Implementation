@@ -20,10 +20,14 @@ from src.config import (
 
 class AssetLoader:
     """
-    Pengelola pemuatan model 3D dengan fallback cerdas.
+    Pengelola pemuatan model 3D dengan fallback cerdas dan caching langsung.
     """
     _cache = {}
     _checked_cache_dir = False
+    _agv_model = None
+    _shelf_model = None
+    _cargo_model = None
+    _dock_model = None
 
     @classmethod
     def _ensure_cache_dirs(cls):
@@ -39,10 +43,10 @@ class AssetLoader:
         Jika berkas ada dan valid, mengembalikan model tersebut.
         Jika tidak ditemukan, mengembalikan model fallback primitif.
         """
-        cls._ensure_cache_dirs()
-
         if model_path in cls._cache:
             return cls._cache[model_path]
+
+        cls._ensure_cache_dirs()
 
         model = None
         if os.path.exists(model_path):
@@ -61,19 +65,27 @@ class AssetLoader:
     @classmethod
     def get_agv_model(cls):
         """Mengambil model robot AGV industri eksternal atau fallback."""
-        return cls.load_model_safe(MODEL_PATH_AGV, fallback_model_name="cube")
+        if cls._agv_model is None:
+            cls._agv_model = cls.load_model_safe(MODEL_PATH_AGV, fallback_model_name="cube")
+        return cls._agv_model
 
     @classmethod
     def get_shelf_model(cls):
         """Mengambil model rak palet bertingkat eksternal atau fallback."""
-        return cls.load_model_safe(MODEL_PATH_SHELF, fallback_model_name="cube")
+        if cls._shelf_model is None:
+            cls._shelf_model = cls.load_model_safe(MODEL_PATH_SHELF, fallback_model_name="cube")
+        return cls._shelf_model
 
     @classmethod
     def get_cargo_model(cls):
         """Mengambil model kotak kargo kontainer eksternal atau fallback."""
-        return cls.load_model_safe(MODEL_PATH_CARGO, fallback_model_name="cube")
+        if cls._cargo_model is None:
+            cls._cargo_model = cls.load_model_safe(MODEL_PATH_CARGO, fallback_model_name="cube")
+        return cls._cargo_model
 
     @classmethod
     def get_dock_model(cls):
         """Mengambil model stasiun pengisian daya eksternal atau fallback."""
-        return cls.load_model_safe(MODEL_PATH_DOCK, fallback_model_name="cube")
+        if cls._dock_model is None:
+            cls._dock_model = cls.load_model_safe(MODEL_PATH_DOCK, fallback_model_name="cube")
+        return cls._dock_model

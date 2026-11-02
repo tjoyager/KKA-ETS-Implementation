@@ -112,8 +112,9 @@ class AGVRobot(Entity):
         self.is_paused: bool = False
         self.pause_timer: float = 0.0
 
-        # Statistik kinerja
-        self.trail_entities: List[Entity] = []
+        # Statistik kinerja & Trail Entity Pool (Zero Allocations pada runtime)
+        self.trail_pool: List[Entity] = []
+        self.trail_active_count: int = 0
         self.total_steps_executed: int = 0
         self.total_mission_steps: int = 0
         self.finish_time: Optional[float] = None
@@ -121,7 +122,7 @@ class AGVRobot(Entity):
         self.on_dropoff_callback = None
 
     def reset_to_dock(self):
-        """Mereset posisi robot ke stasiun dock awal dan membersihkan trail lama."""
+        """Mereset posisi robot ke stasiun dock awal dan menonaktifkan trail (tanpa destroy)."""
         self.clear_trail()
         self.position = grid_to_world(self.spawn_coord[0], self.spawn_coord[1], 0.16)
         self.rotation_y = 0.0
@@ -138,20 +139,26 @@ class AGVRobot(Entity):
         self.finish_time = None
 
     def clear_trail(self):
-        """Menghapus seluruh jejak bercahaya di lantai."""
-        for t in self.trail_entities:
-            destroy(t)
-        self.trail_entities.clear()
+        """Menonaktifkan seluruh jejak bercahaya via pool recycling (Zero GC Churn)."""
+        for i in range(self.trail_active_count):
+            self.trail_pool[i].enabled = False
+        self.trail_active_count = 0
 
     def spawn_trail_marker(self, pos: Vec3):
-        """Membuat penanda jejak bercahaya di lantai saat AGV melintas."""
-        trail_tile = Entity(
-            model='cube',
-            position=Vec3(pos.x, 0.03, pos.z),
-            scale=Vec3(0.55, 0.025, 0.55),
-            color=self.trail_col,
-        )
-        self.trail_entities.append(trail_tile)
+        """Menampilkan penanda jejak bercahaya menggunakan Entity Pool daur-ulang."""
+        if self.trail_active_count < len(self.trail_pool):
+            marker = self.trail_pool[self.trail_active_count]
+            marker.position = Vec3(pos.x, 0.03, pos.z)
+            marker.enabled = True
+        else:
+            marker = Entity(
+                model='cube',
+                position=Vec3(pos.x, 0.03, pos.z),
+                scale=Vec3(0.55, 0.025, 0.55),
+                color=self.trail_col,
+            )
+            self.trail_pool.append(marker)
+        self.trail_active_count += 1
 
     def set_mission_legs(
         self,
@@ -212,15 +219,16 @@ class AGVRobot(Entity):
 
         target_pos = self.active_waypoints[target_idx]
         current_pos = self.position
-        dir_vec = target_pos - current_pos
-        dist = math.sqrt(dir_vec.x ** 2 + dir_vec.z ** 2)
+        dx = target_pos.x - current_pos.x
+        dz = target_pos.z - current_pos.z
+        dist = math.hypot(dx, dz)
 
         # Rotasi halus menghadap arah belokan
         if dist > 0.01:
-            target_angle = math.degrees(math.atan2(dir_vec.x, dir_vec.z))
+            target_angle = math.degrees(math.atan2(dx, dz))
             self.rotation_y = lerp_angle(self.rotation_y, target_angle, time.dt * ROTATION_SPEED)
 
-        # Translasi pergerakan AGV
+        # Translasi pergerakan AGV teroptimasi tanpa instansiasi Vec3 berlebih
         step = self.speed * time.dt
         if dist <= step:
             self.position = target_pos
@@ -228,7 +236,9 @@ class AGVRobot(Entity):
             self.total_steps_executed += 1
             self.spawn_trail_marker(target_pos)
         else:
-            self.position += Vec3(dir_vec.x / dist, 0, dir_vec.z / dist) * step
+            ratio = step / dist
+            self.position.x += dx * ratio
+            self.position.z += dz * ratio
 
     def _handle_leg_completion(self):
         """Dipanggil saat robot mencapai titik akhir etape rute."""

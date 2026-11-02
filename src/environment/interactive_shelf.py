@@ -2,12 +2,15 @@
 interactive_shelf.py
 ====================
 Entitas 3D Rak Penyimpanan Gudang Interaktif berbasis Ursina Engine.
-Dioptimasi dengan pemisahan komponen:
+Dioptimasi ekstrem dengan:
 1. Model visual rak dilebur ke dalam static combined mesh di level scene.
 2. InteractiveShelf hanya bertindak sebagai invisible Collider Box yang sangat ringan (zero-draw-call).
-3. Mendukung raycasting point-and-click, hover aura, marker seleksi dinamis, dan kargo aktif.
+3. Menggunakan Singleton Selection Indicators (3 entitas global untuk seluruh 608 rak,
+   menghemat 1.200+ scene graph entities).
+4. Kargo tanpa collider terpisah (menghemat 340 raycast collision checks per frame).
 """
 
+from typing import Optional
 from ursina import Entity, Vec3, color, Cylinder
 from src.config import (
     grid_to_world,
@@ -26,6 +29,45 @@ class InteractiveShelf(Entity):
     Model visual rangka rak utama dilebur (combined) pada scene,
     sehingga entitas ini murni menangani raycasting dan visual seleksi/kargo tanpa membebani GPU.
     """
+    _shared_hover_box: Optional[Entity] = None
+    _shared_pickup_ring: Optional[Entity] = None
+    _shared_dropoff_ring: Optional[Entity] = None
+    _active_pickup_shelf: Optional["InteractiveShelf"] = None
+    _active_dropoff_shelf: Optional["InteractiveShelf"] = None
+    _active_hover_shelf: Optional["InteractiveShelf"] = None
+
+    @classmethod
+    def _get_hover_box(cls) -> Entity:
+        if cls._shared_hover_box is None:
+            cls._shared_hover_box = Entity(
+                model='cube',
+                scale=Vec3(1.04, 1.44, 1.04),
+                color=color.rgba32(255, 235, 59, 100),
+                enabled=False,
+            )
+        return cls._shared_hover_box
+
+    @classmethod
+    def _get_pickup_ring(cls) -> Entity:
+        if cls._shared_pickup_ring is None:
+            cls._shared_pickup_ring = Entity(
+                model=Cylinder(resolution=16),
+                scale=Vec3(1.15, 0.08, 1.15),
+                color=color.rgb32(*COLOR_SHELF_PICKUP),
+                enabled=False,
+            )
+        return cls._shared_pickup_ring
+
+    @classmethod
+    def _get_dropoff_ring(cls) -> Entity:
+        if cls._shared_dropoff_ring is None:
+            cls._shared_dropoff_ring = Entity(
+                model=Cylinder(resolution=16),
+                scale=Vec3(1.15, 0.08, 1.15),
+                color=color.rgb32(*COLOR_SHELF_DROPOFF),
+                enabled=False,
+            )
+        return cls._shared_dropoff_ring
 
     def __init__(self, shelf_data: ShelfData, **kwargs):
         self.shelf_data = shelf_data
@@ -43,28 +85,8 @@ class InteractiveShelf(Entity):
 
         self.interactive_type = "shelf"
 
-        # 1. Kotak sorot hover semi-transparan kuning terang
-        self.highlight_box = Entity(
-            parent=self,
-            model='cube',
-            position=Vec3(0, 0, 0),
-            scale=Vec3(1.04, 1.04, 1.04),
-            color=color.rgba32(255, 235, 59, 100),
-            enabled=False,
-        )
-
-        # 2. Cincin visual seleksi di atas rak (Cyan untuk Pick-up, Magenta untuk Drop-off)
-        self.selection_ring = Entity(
-            parent=self,
-            model=Cylinder(resolution=16),
-            position=Vec3(0, 0.52, 0),
-            scale=Vec3(1.15, 0.08, 1.15),
-            color=color.rgb32(*COLOR_SHELF_PICKUP),
-            enabled=False,
-        )
-
-        # 3. Kargo aktif di atas rak (jika rak memiliki barang)
-        self.cargo_entity: Entity = None
+        # Kargo aktif di atas rak (jika rak memiliki barang)
+        self.cargo_entity: Optional[Entity] = None
         if shelf_data.has_cargo:
             self._create_cargo_visual()
 
@@ -74,7 +96,7 @@ class InteractiveShelf(Entity):
         self.is_hovered: bool = False
 
     def _create_cargo_visual(self):
-        """Membuat model kargo individual dengan collider agar dapat dideteksi kursor."""
+        """Membuat model kargo individual tanpa collider tambahan (collider rak sudah mencakup kargo)."""
         cargo_col = color.rgb32(*COLOR_CARGO_PRIORITY) if "Lithium" in self.shelf_data.cargo_item else color.rgb32(*COLOR_CARGO_BOX)
         self.cargo_entity = Entity(
             parent=self,
@@ -82,55 +104,75 @@ class InteractiveShelf(Entity):
             position=Vec3(0, -0.22, 0),
             scale=Vec3(0.65, 0.45, 0.65),
             color=cargo_col,
-            collider='box',
+            # Tanpa collider terpisah: menghemat 340 collider raycast checks per-frame!
         )
         self.cargo_entity.interactive_type = "cargo"
         self.cargo_entity.shelf_owner = self
 
     def set_hover(self, hovered: bool):
-        """Menampilkan atau menyembunyikan efek sorot saat mouse melintas."""
+        """Menampilkan atau menyembunyikan efek sorot saat mouse melintas via Singleton Indicator."""
         if self.is_selected_pickup or self.is_selected_dropoff:
             return
 
         self.is_hovered = hovered
-        self.highlight_box.enabled = hovered
+        box = self._get_hover_box()
+        if hovered:
+            box.position = self.position
+            box.enabled = True
+            InteractiveShelf._active_hover_shelf = self
+        else:
+            if InteractiveShelf._active_hover_shelf is self:
+                box.enabled = False
+                InteractiveShelf._active_hover_shelf = None
 
     def mark_as_pickup(self, active: bool = True):
         """Menandai rak ini sebagai titik jemput kargo (Pick-up Node)."""
         self.is_selected_pickup = active
         self.is_selected_dropoff = False
+        ring = self._get_pickup_ring()
         if active:
-            self.selection_ring.enabled = True
-            self.selection_ring.color = color.rgb32(*COLOR_SHELF_PICKUP)
-            self.highlight_box.enabled = True
-            self.highlight_box.color = color.rgba32(0, 229, 255, 90)
+            ring.position = self.position + Vec3(0, 0.72, 0)
+            ring.enabled = True
+            InteractiveShelf._active_pickup_shelf = self
+            if InteractiveShelf._active_hover_shelf is self:
+                self._get_hover_box().enabled = False
+                InteractiveShelf._active_hover_shelf = None
         else:
-            self.selection_ring.enabled = False
-            self.highlight_box.enabled = False
-            self.highlight_box.color = color.rgba32(255, 235, 59, 100)
+            if InteractiveShelf._active_pickup_shelf is self:
+                ring.enabled = False
+                InteractiveShelf._active_pickup_shelf = None
 
     def mark_as_dropoff(self, active: bool = True):
         """Menandai rak ini sebagai titik antar tujuan kargo (Drop-off Node)."""
         self.is_selected_dropoff = active
         self.is_selected_pickup = False
+        ring = self._get_dropoff_ring()
         if active:
-            self.selection_ring.enabled = True
-            self.selection_ring.color = color.rgb32(*COLOR_SHELF_DROPOFF)
-            self.highlight_box.enabled = True
-            self.highlight_box.color = color.rgba32(224, 64, 251, 90)
+            ring.position = self.position + Vec3(0, 0.72, 0)
+            ring.enabled = True
+            InteractiveShelf._active_dropoff_shelf = self
+            if InteractiveShelf._active_hover_shelf is self:
+                self._get_hover_box().enabled = False
+                InteractiveShelf._active_hover_shelf = None
         else:
-            self.selection_ring.enabled = False
-            self.highlight_box.enabled = False
-            self.highlight_box.color = color.rgba32(255, 235, 59, 100)
+            if InteractiveShelf._active_dropoff_shelf is self:
+                ring.enabled = False
+                InteractiveShelf._active_dropoff_shelf = None
 
     def clear_selection(self):
         """Mereset seluruh penanda seleksi."""
         self.is_selected_pickup = False
         self.is_selected_dropoff = False
         self.is_hovered = False
-        self.selection_ring.enabled = False
-        self.highlight_box.enabled = False
-        self.highlight_box.color = color.rgba32(255, 235, 59, 100)
+        if InteractiveShelf._active_pickup_shelf is self:
+            self._get_pickup_ring().enabled = False
+            InteractiveShelf._active_pickup_shelf = None
+        if InteractiveShelf._active_dropoff_shelf is self:
+            self._get_dropoff_ring().enabled = False
+            InteractiveShelf._active_dropoff_shelf = None
+        if InteractiveShelf._active_hover_shelf is self:
+            self._get_hover_box().enabled = False
+            InteractiveShelf._active_hover_shelf = None
 
     def remove_cargo(self) -> str:
         """Mengambil kargo dari rak (saat AGV tiba untuk pick-up)."""
