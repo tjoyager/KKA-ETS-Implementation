@@ -4,20 +4,20 @@
 
 ---
 
-## ⚡ Ringkasan Pembaruan & Optimasi Ekstrem Keseluruhan Sistem
+## Ringkasan Pembaruan & Optimasi Ekstrem Keseluruhan Sistem
 
 Codebase telah dioptimasi secara menyeluruh dari lapisan kognisi graf hingga siklus render GPU untuk memastikan framerate solid 60+ FPS dan waktu komputasi sub-milidetik:
-- 🧠 **Kognisi & Search Engine (`src/cognition/`)**:
+- **Kognisi & Search Engine (`src/cognition/`)**:
   - **Graph Adjacency Precomputation**: Pra-kalkulasi tabel ketetanggaan simpul walkable 4-arah & 8-arah saat startup, menghilangkan iterasi koordinat dan evaluasi NumPy berulang (~10x - 18x lebih cepat).
   - **Intelligent Heuristic Tie-Breaking**: Memprioritaskan simpul dengan nilai $h(n)$ terkecil saat nilai $f(n)$ setara pada A* Search. Memangkas **93% simpul tak perlu** (dari ~1.464 simpul turun ke ~104 simpul) dan menurunkan waktu komputasi dari 31 ms menjadi **sub-milidetik (< 0.9 ms)** dengan keoptimalan rute tetap 100% terjamin secara matematis.
-- 🌐 **Environment & Scene Graph (`src/environment/`)**:
+- **Environment & Scene Graph (`src/environment/`)**:
   - **Singleton Selection Indicators**: Mengganti 1.200+ entitas kotak hover dan cincin seleksi per-rak dengan 3 entitas indikator global (menghemat 1.200+ scene graph entities di Panda3D).
   - **Zero-Collider Cargo**: Menghilangkan 340 collider kotak kargo berlebih (raycast mouse kini langsung ditangani oleh bounding box rak), memangkas beban raycasting per-frame sebesar 36%.
   - **Floor Texture Tiling & Static Mesh Combining**: 1 single plane lantai raksasa dan peleburan ratusan visual rak & dinding ke dalam single mesh statis.
-- ⚙️ **Behavior & Kinematika (`src/behavior/`)**:
+- **Behavior & Kinematika (`src/behavior/`)**:
   - **Zero-Allocation Trail Entity Pooling**: Daur-ulang penanda jejak bercahaya (*trajectory trail*) dengan entity pool tetap, menghilangkan alokasi dinamis berulang dan mencegah *garbage collection stutter*.
   - **Fast Scalar Vector Math**: Interpolasi translasi dan kalkulasi sudut hadap *heading* menggunakan matematika skalar presisi tinggi (`math.hypot`).
-- 💬 **Komunikasi & HUD Telemetry (`src/communication/`)**:
+- **Komunikasi & HUD Telemetry (`src/communication/`)**:
   - **HUD Rate-Limiting & Dirty-Checking (20 Hz)**: Membatasi regenerasi quad mesh font teks Ursina ke 20 Hz dan hanya merender saat teks berubah, memangkas 85% beban text rendering CPU dan melenyapkan *micro-stuttering*.
   - **Asynchronous Coroutine Lifecycle**: Pemuatan bertahap dengan progress bar dinamis tanpa membuat jendela sistem operasi *freeze* / *not responding*.
 
