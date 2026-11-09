@@ -74,10 +74,27 @@ class AGVRobot(Entity):
         )
 
         # Elemen Visual Tambahan Robot
-        # 1. Bumper (dinonaktifkan - sudah ada di model 3D)
-        # 2. Sensor LIDAR dome berputar
+        # 1. Cincin Halo Bercahaya di Lantai Bawah Robot (Ground Beacon)
+        # Menjadikan kedua robot sangat mencolok dan kontras dari ketinggian kamera mana pun
+        self.ground_halo = Entity(
+            parent=self,
+            model=Cylinder(resolution=24),
+            scale=Vec3(2.6, 0.08, 2.6),
+            position=Vec3(0, 0.06, 0),
+            color=self.primary_col,
+        )
+
+        # 2. Indikator Beacon Bola Bercahaya di Atas Robot
+        self.top_beacon = Entity(
+            parent=self,
+            model='sphere',
+            scale=Vec3(0.28, 0.28, 0.28),
+            position=Vec3(0, 0.95, 0),
+            color=self.primary_col,
+        )
+
+        # 3. Sensor LIDAR dome berputar
         self.lidar_dome = Entity(parent=self, enabled=False)
-        # 3. Lampu LED depan kembar
 
         # 4. Kotak kargo di atas dek (awalnya disembunyikan sampai robot menjemput barang)
         self.deck_cargo = Entity(
@@ -93,8 +110,8 @@ class AGVRobot(Entity):
         self.label_tag = Text(
             parent=self,
             text=f"{name}\n[{algorithm_label}]",
-            position=Vec3(0, 2.2, 0),
-            scale=1.1,
+            position=Vec3(0, 2.6, 0),
+            scale=1.8,
             color=self.primary_col,
             billboard=True,
             origin=(0, 0),
@@ -191,6 +208,11 @@ class AGVRobot(Entity):
 
     def update(self):
         """Loop pergerakan per frame (dipanggil otomatis oleh Ursina)."""
+        # Efek denyut halus pada halo robot agar dinamis dan selalu terlihat
+        pulse = 2.6 + math.sin(time.time() * 5.0) * 0.15
+        self.ground_halo.scale_x = pulse
+        self.ground_halo.scale_z = pulse
+
         # Sensor LIDAR berputar terus menerus
         self.lidar_dome.rotation_y += 360 * time.dt
 

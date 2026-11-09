@@ -11,7 +11,7 @@ Dioptimasi ekstrem dengan:
 """
 
 from typing import Optional
-from ursina import Entity, Vec3, color, Cylinder
+from ursina import Entity, Vec3, color, Cylinder, Text
 from src.config import (
     grid_to_world,
     COLOR_SHELF_PICKUP,
@@ -33,6 +33,8 @@ class InteractiveShelf(Entity):
     _shared_hover_box: Optional[Entity] = None
     _shared_pickup_ring: Optional[Entity] = None
     _shared_dropoff_ring: Optional[Entity] = None
+    _pickup_label: Optional[Text] = None
+    _dropoff_label: Optional[Text] = None
     _active_pickup_shelf: Optional["InteractiveShelf"] = None
     _active_dropoff_shelf: Optional["InteractiveShelf"] = None
     _active_hover_shelf: Optional["InteractiveShelf"] = None
@@ -51,22 +53,42 @@ class InteractiveShelf(Entity):
     @classmethod
     def _get_pickup_ring(cls) -> Entity:
         if cls._shared_pickup_ring is None:
-            cls._shared_pickup_ring = Entity(
-                model=Cylinder(resolution=16),
-                scale=Vec3(1.15, 0.08, 1.15),
+            cls._shared_pickup_ring = Entity(enabled=False)
+            Entity(
+                parent=cls._shared_pickup_ring,
+                model=Cylinder(resolution=24),
+                scale=Vec3(1.3, 0.12, 1.3),
                 color=color.rgb32(*COLOR_SHELF_PICKUP),
-                enabled=False,
+            )
+            cls._pickup_label = Text(
+                parent=cls._shared_pickup_ring,
+                text="TITIK JEMPUT\n[PICK-UP]",
+                position=Vec3(0, 1.8, 0),
+                scale=1.4,
+                color=color.rgb32(*COLOR_SHELF_PICKUP),
+                billboard=True,
+                origin=(0, 0),
             )
         return cls._shared_pickup_ring
 
     @classmethod
     def _get_dropoff_ring(cls) -> Entity:
         if cls._shared_dropoff_ring is None:
-            cls._shared_dropoff_ring = Entity(
-                model=Cylinder(resolution=16),
-                scale=Vec3(1.15, 0.08, 1.15),
+            cls._shared_dropoff_ring = Entity(enabled=False)
+            Entity(
+                parent=cls._shared_dropoff_ring,
+                model=Cylinder(resolution=24),
+                scale=Vec3(1.3, 0.12, 1.3),
                 color=color.rgb32(*COLOR_SHELF_DROPOFF),
-                enabled=False,
+            )
+            cls._dropoff_label = Text(
+                parent=cls._shared_dropoff_ring,
+                text="TITIK ANTAR\n[DROP-OFF]",
+                position=Vec3(0, 1.8, 0),
+                scale=1.4,
+                color=color.rgb32(*COLOR_SHELF_DROPOFF),
+                billboard=True,
+                origin=(0, 0),
             )
         return cls._shared_dropoff_ring
 

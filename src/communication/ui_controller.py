@@ -164,7 +164,11 @@ class UIController:
         self.interaction_sys.reset_interaction()
         success = self.mission_mgr.trigger_random_mission()
         if success:
-            self.interaction_sys.prompt_text = "MISI ACAK DILUNCURKAN! A* vs GBFS sedang balapan."
+            from src.communication.interaction_system import InteractionState
+            self.interaction_sys.state = InteractionState.RACING
+            p_id = self.mission_mgr.selected_pickup_shelf.shelf_data.shelf_id
+            d_id = self.mission_mgr.selected_dropoff_shelf.shelf_data.shelf_id
+            self.interaction_sys.prompt_text = f"MISI ACAK DIMULAI! A* vs GBFS: Rak {p_id} -> {d_id}"
 
     def toggle_pause(self):
         """Menjeda / melanjutkan pergerakan robot."""
@@ -184,8 +188,16 @@ class UIController:
         self.btn_pause.color = color.rgb32(230, 126, 34)
 
     def cycle_camera(self):
-        """Mengganti mode kamera."""
-        new_mode = self.scene.cycle_camera_mode()
+        """Mengganti mode kamera dengan tracking target robot."""
+        next_idx = (self.scene.cam_mode_idx + 1) % len(self.scene.cam_modes)
+        next_mode = self.scene.cam_modes[next_idx]
+        target_pos = None
+        if next_mode == "follow_alpha":
+            target_pos = self.mission_mgr.robot_alpha.position
+        elif next_mode == "follow_beta":
+            target_pos = self.mission_mgr.robot_beta.position
+
+        new_mode = self.scene.cycle_camera_mode(target_robot_pos=target_pos)
         self.btn_cam.text = f"Kamera: {new_mode.capitalize()} [V]"
 
     def adjust_speed(self, delta: float):

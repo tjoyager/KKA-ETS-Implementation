@@ -357,44 +357,59 @@ class WarehouseScene(Entity):
         self.free_cam = EditorCamera(enabled=False)
         self.apply_camera_mode("isometrik")
 
-    def apply_camera_mode(self, mode: str):
-        """Mengubah sudut pandang kamera."""
+    def apply_camera_mode(self, mode: str, target_robot_pos: Optional[Vec3] = None):
+        """Mengubah sudut pandang kamera dengan stabilisasi rotasi penuh (anti-gimbal lock)."""
         self.current_cam_mode = mode
-        center_target = Vec3(0, 0, 0)
+
+        # Selalu nonaktifkan free_cam jika beralih ke mode tetap
+        if self.free_cam and mode != "bebas":
+            self.free_cam.disable()
 
         if mode == "isometrik":
-            self.free_cam.disable()
             cfg = CAMERA_PRESETS["isometrik"]
+            camera.rotation = Vec3(0, 0, 0)
             camera.position = Vec3(*cfg["pos"])
             camera.fov = cfg["fov"]
-            camera.look_at(center_target)
+            camera.look_at(Vec3(*cfg["target"]))
+            camera.rotation_z = 0.0
 
         elif mode == "topdown":
-            self.free_cam.disable()
             cfg = CAMERA_PRESETS["topdown"]
             camera.position = Vec3(*cfg["pos"])
+            camera.rotation = Vec3(90, 0, 0)
             camera.fov = cfg["fov"]
-            camera.look_at(center_target)
+
+        elif mode in ("follow_alpha", "follow_beta"):
+            cfg = CAMERA_PRESETS.get(mode, {"offset": (0.0, 14.0, -16.0), "fov": 55})
+            camera.fov = cfg.get("fov", 55)
+            camera.rotation_z = 0.0
+            if target_robot_pos is not None:
+                offset = cfg.get("offset", (0.0, 14.0, -16.0))
+                camera.position = target_robot_pos + Vec3(*offset)
+                camera.look_at(target_robot_pos)
+                camera.rotation_z = 0.0
 
         elif mode == "bebas":
-            self.free_cam.enable()
-            self.free_cam.position = camera.position
-            self.free_cam.look_at(center_target)
+            if self.free_cam:
+                self.free_cam.enable()
+                self.free_cam.position = camera.position
+                self.free_cam.rotation = camera.rotation
 
-    def cycle_camera_mode(self) -> str:
+    def cycle_camera_mode(self, target_robot_pos: Optional[Vec3] = None) -> str:
         """Siklus pergantian sudut kamera."""
         self.cam_mode_idx = (self.cam_mode_idx + 1) % len(self.cam_modes)
         mode = self.cam_modes[self.cam_mode_idx]
-        self.apply_camera_mode(mode)
+        self.apply_camera_mode(mode, target_robot_pos=target_robot_pos)
         return mode
 
-    def update_follow_camera(self, target_pos: Vec3, offset: Tuple[float, float, float] = (0, 16.0, -18.0)):
-        """Kamera mengekor posisi robot secara halus."""
+    def update_follow_camera(self, target_pos: Vec3, offset: Tuple[float, float, float] = (0.0, 14.0, -16.0)):
+        """Kamera mengekor posisi robot secara halus tanpa deviasi roll."""
         if "follow" in self.current_cam_mode:
             desired_pos = target_pos + Vec3(*offset)
             camera.position = Vec3(
-                camera.position.x + (desired_pos.x - camera.position.x) * 0.1,
-                desired_pos.y,
-                camera.position.z + (desired_pos.z - camera.position.z) * 0.1,
+                camera.position.x + (desired_pos.x - camera.position.x) * 0.15,
+                camera.position.y + (desired_pos.y - camera.position.y) * 0.15,
+                camera.position.z + (desired_pos.z - camera.position.z) * 0.15,
             )
             camera.look_at(target_pos)
+            camera.rotation_z = 0.0

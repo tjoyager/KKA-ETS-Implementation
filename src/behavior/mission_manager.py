@@ -120,6 +120,10 @@ class MissionManager:
         self.is_race_active = True
         self.is_paused = False
 
+        # Reset posisi awal robot ke dock sebelum memulai balapan baru
+        self.robot_alpha.reset_to_dock()
+        self.robot_beta.reset_to_dock()
+
         # Berikan rute ke Robot Alpha (A*)
         self.robot_alpha.speed = self.current_speed
         self.robot_alpha.set_mission_legs(
