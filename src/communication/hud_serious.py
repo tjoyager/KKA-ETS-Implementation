@@ -21,13 +21,13 @@ class SeriousHUD:
     """
 
     def __init__(self):
-        # Panel dasar semi-transparan dengan gaya cyber-industrial
+        # Panel dasar semi-transparan kompak dengan gaya cyber-industrial
         self.panel = Entity(
             parent=camera.ui,
             model='quad',
-            position=Vec3(-0.47, 0.24, 0),
-            scale=Vec3(0.82, 0.46, 1),
-            color=color.rgba32(14, 18, 28, 225),
+            position=Vec3(-0.54, 0.28, 0),
+            scale=Vec3(0.68, 0.38, 1),
+            color=color.rgba32(14, 18, 28, 220),
             enabled=True,
         )
 
@@ -36,7 +36,7 @@ class SeriousHUD:
             parent=self.panel,
             model='quad',
             position=Vec3(0, 0.495, -0.01),
-            scale=Vec3(1.0, 0.012, 1),
+            scale=Vec3(1.0, 0.014, 1),
             color=color.rgb32(0, 229, 255),
         )
 
@@ -44,7 +44,7 @@ class SeriousHUD:
             parent=self.panel,
             text="",
             position=Vec3(-0.48, 0.46, -0.01),
-            scale=0.90,
+            scale=0.76,
             color=color.white,
         )
 
@@ -125,23 +125,20 @@ class SeriousHUD:
         h_formula = mission_mgr.current_heuristic_info.get("formula", "")
 
         new_text = (
-            f" [ WMS INDUSTRIAL TELEMETRY DASHBOARD ]          ● SISTEM ONLINE\n"
-            f" HEURISTIK AKTIF : [ {h_name} ]  (h = {h_formula})\n"
-            f" [H] Ganti Heuristik (Manhattan / Euclidean / Chebyshev / Octile)\n"
-            f" ----------------------------------------------------------------------\n"
-            f" STATUS OPERASI  : {interaction_sys.prompt_text}\n"
-            f" KONTAINER KARGO : {pickup_info} -> TUJUAN: {dropoff_info}\n"
-            f" ======================================================================\n"
-            f" METRIK SEARCH          | [CYAN] AGV Alpha (A*)   | [AMBER] Beta (GBFS)\n"
-            f" ----------------------------------------------------------------------\n"
-            f" Biaya Rute (Cost)      | {cost_a.ljust(22)} | {cost_b}\n"
-            f" Simpul Dieksplorasi    | {nodes_a.ljust(22)} | {nodes_b}\n"
-            f" Waktu Komputasi Jalur  | {time_a.ljust(22)} | {time_b}\n"
-            f" Progres Navigasi       | {steps_a.ljust(22)} | {steps_b}\n"
-            f" Status Robot           | {robot_a.state.value[:20].ljust(22)} | {robot_b.state.value[:20]}\n"
-            f" ======================================================================\n"
-            f" BOTTLENECK JARINGAN    : {shared_count} sel lorong ({cong_pct:.1f}%) | {risk_str}\n"
-            f" KECEPATAN: {mission_mgr.current_speed:.1f}x [+/-] | EVALUASI: {outcome_str}"
+            f" [ WMS FLEET TELEMETRY ]                      ● ONLINE\n"
+            f" HEURISTIK: [ {h_name} ] (h = {h_formula})      [H] Ganti\n"
+            f" Misi: {pickup_info} -> {dropoff_info}\n"
+            f" --------------------------------------------------------\n"
+            f" METRIK SEARCH       | [CYAN] A* (Alpha)  | [AMBER] GBFS (Beta)\n"
+            f" --------------------------------------------------------\n"
+            f" Biaya Rute (Cost)   | {cost_a.ljust(18)} | {cost_b}\n"
+            f" Simpul Eksplorasi   | {nodes_a.ljust(18)} | {nodes_b}\n"
+            f" Waktu Komputasi     | {time_a.ljust(18)} | {time_b}\n"
+            f" Progres Langkah     | {steps_a.ljust(18)} | {steps_b}\n"
+            f" Status Robot        | {robot_a.state.value[:16].ljust(18)} | {robot_b.state.value[:16]}\n"
+            f" --------------------------------------------------------\n"
+            f" BOTTLENECK: {shared_count} sel ({cong_pct:.1f}%) | {risk_str}\n"
+            f" SPEED: {mission_mgr.current_speed:.1f}x [+/-] | STATUS: {outcome_str[:32]}"
         )
 
         if new_text != self._last_rendered_text:

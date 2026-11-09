@@ -86,10 +86,10 @@ class InteractiveShelf(Entity):
 
         self.interactive_type = "shelf"
 
-        # Kargo aktif di atas rak (jika rak memiliki barang)
+        # Kargo aktif di atas rak (jika rak memiliki barang dan tidak menggunakan model 3D occupied-shelf)
         self.visual_entity = kwargs.get('visual_entity', None)
         self.cargo_entity: Optional[Entity] = None
-        if shelf_data.has_cargo:
+        if shelf_data.has_cargo and not self.visual_entity:
             self._create_cargo_visual()
 
         # Status seleksi
@@ -182,7 +182,7 @@ class InteractiveShelf(Entity):
         self.shelf_data.has_cargo = False
         self.shelf_data.cargo_item = ""
         if self.visual_entity:
-            self.visual_entity.model = MODEL_PATH_SHELF_EMPTY
+            self.visual_entity.model = AssetLoader.get_shelf_empty_model()
         if self.cargo_entity:
             self.cargo_entity.enabled = False
         return item_name
@@ -192,6 +192,6 @@ class InteractiveShelf(Entity):
         self.shelf_data.has_cargo = True
         self.shelf_data.cargo_item = item_name
         if self.visual_entity:
-            self.visual_entity.model = MODEL_PATH_SHELF_OCCUPIED
+            self.visual_entity.model = AssetLoader.get_shelf_occupied_model()
         if self.cargo_entity:
             self.cargo_entity.enabled = True

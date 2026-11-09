@@ -100,14 +100,14 @@ MODEL_PATH_CARGO = "assets/models/cargo.obj"
 # ============================================================================
 CAMERA_PRESETS = {
     "isometrik": {
-        "pos": (0, 56.0, -46.0),
-        "target": (0, 0, 0),
-        "fov": 54,
-    },
-    "topdown": {
-        "pos": (0, 72.0, 0.001),
+        "pos": (-36.0, 48.0, -38.0),
         "target": (0, 0, 0),
         "fov": 50,
+    },
+    "topdown": {
+        "pos": (0, 68.0, 0.001),
+        "target": (0, 0, 0),
+        "fov": 48,
     },
     "follow_alpha": {
         "offset": (0, 12.0, -14.0),
