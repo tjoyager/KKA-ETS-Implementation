@@ -6,7 +6,7 @@ Mengelola tombol kontrol di layar, peralihan mode HUD ganda (Serious vs Gamifica
 serta integrasi siklus hidup simulator.
 """
 
-from ursina import Button, Vec3, color, application
+from ursina import Button, Vec3, color, application, Entity, camera
 
 from src.behavior.mission_manager import MissionManager
 from src.communication.interaction_system import InteractionSystem
