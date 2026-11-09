@@ -79,10 +79,13 @@ COLOR_CARGO_PRIORITY = (241, 196, 15)    # Emas kontainer kargo bernilai tinggi
 # ============================================================================
 # JALUR BERKAS ASET MODEL 3D EKSTERNAL
 # ============================================================================
-MODEL_PATH_AGV = "assets/models/agv.obj"
-MODEL_PATH_SHELF = "assets/models/shelf.obj"
+MODEL_PATH_AGV = "assets/models/robot.obj"
+MODEL_PATH_AGV_LOADED = "assets/models/robot-box.obj"
+MODEL_PATH_SHELF_EMPTY = "assets/models/empty-shelf.obj"
+MODEL_PATH_SHELF_OCCUPIED = "assets/models/occupied-shelf.obj"
+MODEL_PATH_DOCK = "assets/models/docking-station.obj"
+MODEL_PATH_SHELF = "assets/models/empty-shelf.obj"
 MODEL_PATH_CARGO = "assets/models/cargo.obj"
-MODEL_PATH_DOCK = "assets/models/dock.obj"
 
 # ============================================================================
 # PRESET KAMERA ARENA 50x50
