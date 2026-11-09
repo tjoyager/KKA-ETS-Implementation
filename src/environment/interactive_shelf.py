@@ -21,6 +21,7 @@ from src.config import (
 )
 from src.cognition.warehouse_graph import ShelfData
 from src.environment.asset_loader import AssetLoader
+from src.config import MODEL_PATH_SHELF_EMPTY, MODEL_PATH_SHELF_OCCUPIED
 
 
 class InteractiveShelf(Entity):
@@ -41,7 +42,7 @@ class InteractiveShelf(Entity):
         if cls._shared_hover_box is None:
             cls._shared_hover_box = Entity(
                 model='cube',
-                scale=Vec3(1.04, 1.44, 1.04),
+                scale=Vec3(0.92, 1.15, 0.92),
                 color=color.rgba32(255, 235, 59, 100),
                 enabled=False,
             )
@@ -73,11 +74,11 @@ class InteractiveShelf(Entity):
         self.shelf_data = shelf_data
 
         # Posisi di tengah-tengah volume rak (tinggi 1.4m -> y=0.7)
-        world_pos = grid_to_world(shelf_data.x, shelf_data.y, 0.7)
+        world_pos = grid_to_world(shelf_data.x, shelf_data.y, 0.55)
 
         super().__init__(
             position=world_pos,
-            scale=Vec3(0.92, 1.4, 0.92),
+            scale=Vec3(0.88, 1.1, 0.88),
             collider='box',
             visible=False,  # Invisible collider: 0 draw-calls untuk rangka statis!
             **kwargs,
@@ -86,6 +87,7 @@ class InteractiveShelf(Entity):
         self.interactive_type = "shelf"
 
         # Kargo aktif di atas rak (jika rak memiliki barang)
+        self.visual_entity = kwargs.get('visual_entity', None)
         self.cargo_entity: Optional[Entity] = None
         if shelf_data.has_cargo:
             self._create_cargo_visual()
@@ -131,7 +133,7 @@ class InteractiveShelf(Entity):
         self.is_selected_dropoff = False
         ring = self._get_pickup_ring()
         if active:
-            ring.position = self.position + Vec3(0, 0.72, 0)
+            ring.position = self.position + Vec3(0, 0.60, 0)
             ring.enabled = True
             InteractiveShelf._active_pickup_shelf = self
             if InteractiveShelf._active_hover_shelf is self:
@@ -148,7 +150,7 @@ class InteractiveShelf(Entity):
         self.is_selected_pickup = False
         ring = self._get_dropoff_ring()
         if active:
-            ring.position = self.position + Vec3(0, 0.72, 0)
+            ring.position = self.position + Vec3(0, 0.60, 0)
             ring.enabled = True
             InteractiveShelf._active_dropoff_shelf = self
             if InteractiveShelf._active_hover_shelf is self:
@@ -179,6 +181,8 @@ class InteractiveShelf(Entity):
         item_name = self.shelf_data.cargo_item
         self.shelf_data.has_cargo = False
         self.shelf_data.cargo_item = ""
+        if self.visual_entity:
+            self.visual_entity.model = MODEL_PATH_SHELF_EMPTY
         if self.cargo_entity:
             self.cargo_entity.enabled = False
         return item_name
@@ -187,7 +191,7 @@ class InteractiveShelf(Entity):
         """Menaruh kargo ke rak (saat AGV tiba untuk drop-off)."""
         self.shelf_data.has_cargo = True
         self.shelf_data.cargo_item = item_name
+        if self.visual_entity:
+            self.visual_entity.model = MODEL_PATH_SHELF_OCCUPIED
         if self.cargo_entity:
             self.cargo_entity.enabled = True
-        else:
-            self._create_cargo_visual()

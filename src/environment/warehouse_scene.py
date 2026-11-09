@@ -174,10 +174,12 @@ class WarehouseScene(Entity):
         # =====================================================================
         # TAHAP 2: SPAWN VISUAL RAK & SEPARATED COLLIDERS SECARA BATCH
         # =====================================================================
-        self._update_progress("Menyiapkan Model 3D Rak & Palet Oranye...", 0.18)
-        shelf_model = AssetLoader.get_shelf_model()
-        self.static_racks_parent = Entity(color=color.rgb32(*COLOR_SHELF_FRAME))
-        self.static_beams_parent = Entity(color=color.rgb32(*COLOR_SHELF_BEAM))
+        # =====================================================================
+        # TAHAP 2: SPAWN VISUAL RAK 3D (.OBJ BERTEKSTUR) & COLLIDERS
+        # =====================================================================
+        self._update_progress("Menyiapkan Model 3D Rak & Aset...", 0.18)
+        from src.config import MODEL_PATH_SHELF_EMPTY, MODEL_PATH_SHELF_OCCUPIED
+        self.static_racks_parent = Entity()
         yield
 
         all_shelves: List[ShelfData] = list(self.graph.shelves.values())
@@ -189,30 +191,16 @@ class WarehouseScene(Entity):
             for sdata in batch:
                 world_pos = grid_to_world(sdata.x, sdata.y, 0.0)
 
-                # 1. Rangka tiang baja industrial (Biru Modern)
-                Entity(
+                # 1. Model visual 3D bertekstur (empty vs occupied)
+                vis_ent = Entity(
                     parent=self.static_racks_parent,
-                    model=shelf_model,
+                    model=MODEL_PATH_SHELF_OCCUPIED if sdata.has_cargo else MODEL_PATH_SHELF_EMPTY,
                     position=world_pos,
-                    scale=Vec3(0.92, 1.4, 0.92),
+                    scale=Vec3(0.88, 1.0, 0.88),
                 )
 
-                # 2. Dek palet keselamatan oranye (Tampak jelas & kontras dari Top-down & Isometrik)
-                Entity(
-                    parent=self.static_beams_parent,
-                    model='cube',
-                    position=world_pos + Vec3(0, 1.34, 0),
-                    scale=Vec3(0.88, 0.08, 0.88),
-                )
-                Entity(
-                    parent=self.static_beams_parent,
-                    model='cube',
-                    position=world_pos + Vec3(0, 0.68, 0),
-                    scale=Vec3(0.88, 0.06, 0.88),
-                )
-
-                # 3. Separated Collider Box (InteractiveShelf murni untuk raycasting)
-                shelf_ent = InteractiveShelf(shelf_data=sdata)
+                # 2. Separated Collider Box (InteractiveShelf murni untuk raycasting)
+                shelf_ent = InteractiveShelf(shelf_data=sdata, visual_entity=vis_ent)
                 self.interactive_shelves[sdata.coord] = shelf_ent
 
             pct = 0.20 + (0.50 * (min(i + batch_size, total_shelves) / total_shelves))
@@ -220,12 +208,9 @@ class WarehouseScene(Entity):
             yield
 
         # =====================================================================
-        # TAHAP 3: STATIC MESH COMBINING UNTUK RAK
+        # TAHAP 3: FINALISASI RAK
         # =====================================================================
-        self._update_progress("Menggabungkan Mesh Rak Statis (Combining Racks)...", 0.75)
-        yield  # Beri kesempatan render sebelum combine berjalan
-        self.static_racks_parent.combine(auto_destroy=True)
-        self.static_beams_parent.combine(auto_destroy=True)
+        self._update_progress("Mengonfigurasi Pemandangan Rak 3D...", 0.75)
         yield
 
         # =====================================================================
@@ -323,7 +308,7 @@ class WarehouseScene(Entity):
         dock_model = AssetLoader.get_dock_model()
 
         # Dock Alpha (A*) di (1, 1)
-        pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.04)
+        pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
         Entity(
             model='cube',
             position=pos_a - Vec3(0, 0.02, 0),
@@ -333,8 +318,7 @@ class WarehouseScene(Entity):
         Entity(
             model=dock_model,
             position=pos_a,
-            scale=Vec3(1.2, 0.15, 1.2),
-            color=color.rgb32(*COLOR_ALPHA_PRIMARY),
+            scale=Vec3(0.65, 0.65, 0.65),
         )
         Text(
             text="DOCK ALPHA\n(A* Search)",
@@ -346,7 +330,7 @@ class WarehouseScene(Entity):
         )
 
         # Dock Beta (GBFS) di (1, 3)
-        pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.04)
+        pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.0)
         Entity(
             model='cube',
             position=pos_b - Vec3(0, 0.02, 0),
@@ -356,8 +340,7 @@ class WarehouseScene(Entity):
         Entity(
             model=dock_model,
             position=pos_b,
-            scale=Vec3(1.2, 0.15, 1.2),
-            color=color.rgb32(*COLOR_BETA_PRIMARY),
+            scale=Vec3(0.65, 0.65, 0.65),
         )
         Text(
             text="DOCK BETA\n(GBFS)",
