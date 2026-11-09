@@ -23,61 +23,92 @@ class GamificationHUD:
         # Root container unscaled (scale=Vec3(1,1,1)) - mencegah distorsi teks font
         self.container = Entity(parent=camera.ui, enabled=False)
 
+        self.side_w = 0.58
+        self.side_h = 0.40
+
         # 1. Panel banner atas bergaya arcade
-        top_pos = Vec3(0, 0.435, 0)
-        top_w = 0.98
-        top_h = 0.088
         self.top_bg = Entity(
             parent=self.container,
             model='quad',
-            position=top_pos,
-            scale=Vec3(top_w, top_h, 1),
+            position=Vec3(0, 0.44, 0),
+            scale=Vec3(0.96, 0.086, 1),
             color=color.rgba32(18, 14, 30, 235),
         )
-        Entity(
+        self.top_accent = Entity(
             parent=self.container,
             model='quad',
-            position=top_pos + Vec3(0, top_h / 2 - 0.003, -0.005),
-            scale=Vec3(top_w, 0.006, 1),
+            position=Vec3(0, 0.44 + 0.043 - 0.003, -0.005),
+            scale=Vec3(0.96, 0.006, 1),
             color=color.rgb32(255, 215, 0),
         )
         self.top_text = Text(
             parent=self.container,
             text="",
-            position=Vec3(-0.47, 0.468, -0.01),
-            scale=0.74,
+            position=Vec3(-0.46, 0.47, -0.01),
+            scale=0.70,
             color=color.rgb32(255, 230, 40),
         )
 
         # 2. Panel samping kiri untuk papan skor & rincian balapan
-        side_pos = Vec3(-0.52, 0.16, 0)
-        side_w = 0.66
-        side_h = 0.42
         self.side_bg = Entity(
             parent=self.container,
             model='quad',
-            position=side_pos,
-            scale=Vec3(side_w, side_h, 1),
+            position=Vec3(-0.48, 0.18, 0),
+            scale=Vec3(self.side_w, self.side_h, 1),
             color=color.rgba32(20, 16, 34, 225),
         )
-        Entity(
+        self.side_accent = Entity(
             parent=self.container,
             model='quad',
-            position=side_pos + Vec3(0, side_h / 2 - 0.003, -0.005),
-            scale=Vec3(side_w, 0.006, 1),
+            position=Vec3(-0.48, 0.18 + self.side_h / 2 - 0.003, -0.005),
+            scale=Vec3(self.side_w, 0.006, 1),
             color=color.rgb32(233, 30, 99),
         )
         self.side_text = Text(
             parent=self.container,
             text="",
-            position=Vec3(-0.83, 0.35, -0.01),
-            scale=0.72,
+            position=Vec3(-0.76, 0.36, -0.01),
+            scale=0.68,
             color=color.white,
         )
 
         self._last_update_time: float = 0.0
         self._last_top_text: str = ""
         self._last_side_text: str = ""
+        self._last_aspect_ratio: float = 0.0
+
+        from ursina import window
+        self.update_layout()
+
+    def update_layout(self):
+        """Menyesuaikan tata letak Gamification HUD sesuai aspect ratio jendela."""
+        from ursina import window
+        aspect = window.aspect_ratio
+        if abs(aspect - self._last_aspect_ratio) < 0.01:
+            return
+        self._last_aspect_ratio = aspect
+
+        # 1. Top banner: selalu di tengah atas layar, lebar proporsional
+        top_y = 0.44
+        top_w = min(1.05, max(0.65, aspect * 0.82))
+        top_h = 0.086
+        self.top_bg.position = Vec3(0, top_y, 0)
+        self.top_bg.scale = Vec3(top_w, top_h, 1)
+        self.top_accent.position = Vec3(0, top_y + top_h / 2.0 - 0.003, -0.005)
+        self.top_accent.scale = Vec3(top_w, 0.006, 1)
+        self.top_text.position = Vec3(-top_w / 2.0 + 0.018, top_y + top_h / 2.0 - 0.018, -0.01)
+
+        # 2. Side panel: selalu menempel di kiri layar
+        margin_x = 0.02
+        screen_left = -aspect / 2.0
+        center_x = screen_left + margin_x + (self.side_w / 2.0)
+        center_y = 0.18
+
+        self.side_bg.position = Vec3(center_x, center_y, 0)
+        self.side_bg.scale = Vec3(self.side_w, self.side_h, 1)
+        self.side_accent.position = Vec3(center_x, center_y + self.side_h / 2.0 - 0.003, -0.005)
+        self.side_accent.scale = Vec3(self.side_w, 0.006, 1)
+        self.side_text.position = Vec3(center_x - self.side_w / 2.0 + 0.016, center_y + self.side_h / 2.0 - 0.020, -0.01)
 
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan elemen HUD Gamifikasi."""
@@ -90,6 +121,8 @@ class GamificationHUD:
         """Memperbarui visual skor, bintang, dan waktu balapan dengan dirty-checking dan rate-limiting."""
         if not self.container.enabled:
             return
+
+        self.update_layout()
 
         now = time.perf_counter()
         if (now - self._last_update_time < 0.05) and not mission_mgr.race_finished:

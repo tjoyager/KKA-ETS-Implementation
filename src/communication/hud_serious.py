@@ -24,25 +24,24 @@ class SeriousHUD:
         # Root container unscaled (scale=Vec3(1,1,1)) - menjaga rasio aspek font 1:1 sempurna
         self.container = Entity(parent=camera.ui, enabled=True)
 
-        panel_pos = Vec3(-0.52, 0.22, 0)
-        panel_w = 0.66
-        panel_h = 0.42
+        self.panel_w = 0.58
+        self.panel_h = 0.40
 
         # Panel dasar semi-transparan kompak dengan gaya cyber-industrial
         self.bg_panel = Entity(
             parent=self.container,
             model='quad',
-            position=panel_pos,
-            scale=Vec3(panel_w, panel_h, 1),
+            position=Vec3(-0.48, 0.25, 0),
+            scale=Vec3(self.panel_w, self.panel_h, 1),
             color=color.rgba32(14, 18, 28, 225),
         )
 
         # Garis aksen cyan di bagian atas panel
-        Entity(
+        self.accent_line = Entity(
             parent=self.container,
             model='quad',
-            position=panel_pos + Vec3(0, panel_h / 2 - 0.003, -0.005),
-            scale=Vec3(panel_w, 0.006, 1),
+            position=Vec3(-0.48, 0.25 + self.panel_h / 2 - 0.003, -0.005),
+            scale=Vec3(self.panel_w, 0.006, 1),
             color=color.rgb32(0, 229, 255),
         )
 
@@ -50,13 +49,38 @@ class SeriousHUD:
         self.text_display = Text(
             parent=self.container,
             text="",
-            position=panel_pos + Vec3(-panel_w / 2 + 0.02, panel_h / 2 - 0.02, -0.01),
-            scale=0.72,
+            position=Vec3(-0.76, 0.43, -0.01),
+            scale=0.68,
             color=color.white,
         )
 
         self._last_update_time: float = 0.0
         self._last_rendered_text: str = ""
+        self._last_aspect_ratio: float = 0.0
+
+        from ursina import window
+        self.update_layout()
+
+    def update_layout(self):
+        """Menyesuaikan posisi panel secara dinamis agar selalu menempel rapi di kiri atas layar."""
+        from ursina import window
+        aspect = window.aspect_ratio
+        if abs(aspect - self._last_aspect_ratio) < 0.01:
+            return
+        self._last_aspect_ratio = aspect
+
+        margin_x = 0.02
+        screen_left = -aspect / 2.0
+        center_x = screen_left + margin_x + (self.panel_w / 2.0)
+        center_y = 0.25
+
+        self.bg_panel.position = Vec3(center_x, center_y, 0)
+        self.bg_panel.scale = Vec3(self.panel_w, self.panel_h, 1)
+
+        self.accent_line.position = Vec3(center_x, center_y + self.panel_h / 2.0 - 0.003, -0.005)
+        self.accent_line.scale = Vec3(self.panel_w, 0.006, 1)
+
+        self.text_display.position = Vec3(center_x - self.panel_w / 2.0 + 0.016, center_y + self.panel_h / 2.0 - 0.020, -0.01)
 
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan panel HUD Serious."""
@@ -68,6 +92,8 @@ class SeriousHUD:
         """Memperbarui teks metrik telemetri secara efisien dengan dirty-checking dan rate-limiting."""
         if not self.container.enabled:
             return
+
+        self.update_layout()
 
         now = time.perf_counter()
         # Batasi regenerasi text mesh Ursina ke 20 Hz (setiap 0.05s) kecuali baru saja selesai balapan
