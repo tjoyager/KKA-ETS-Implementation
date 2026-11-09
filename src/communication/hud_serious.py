@@ -21,21 +21,30 @@ class SeriousHUD:
     """
 
     def __init__(self):
-        # Panel dasar gelap transparan di kiri atas layar
+        # Panel dasar semi-transparan dengan gaya cyber-industrial
         self.panel = Entity(
             parent=camera.ui,
             model='quad',
-            position=Vec3(-0.48, 0.25, 0),
-            scale=Vec3(0.78, 0.44, 1),
-            color=color.rgba32(14, 18, 26, 235),
+            position=Vec3(-0.47, 0.24, 0),
+            scale=Vec3(0.82, 0.46, 1),
+            color=color.rgba32(14, 18, 28, 225),
             enabled=True,
+        )
+
+        # Garis aksen cyan di bagian atas panel
+        Entity(
+            parent=self.panel,
+            model='quad',
+            position=Vec3(0, 0.495, -0.01),
+            scale=Vec3(1.0, 0.012, 1),
+            color=color.rgb32(0, 229, 255),
         )
 
         self.text_display = Text(
             parent=self.panel,
             text="",
             position=Vec3(-0.48, 0.46, -0.01),
-            scale=0.92,
+            scale=0.90,
             color=color.white,
         )
 
@@ -111,25 +120,28 @@ class SeriousHUD:
         # Evaluasi akhir
         outcome_str = mission_mgr.overall_efficiency_winner if mission_mgr.race_finished else "Sedang Berlangsung..."
 
+        # Data Heuristik Aktif
+        h_name = mission_mgr.current_heuristic_name.upper()
+        h_formula = mission_mgr.current_heuristic_info.get("formula", "")
+
         new_text = (
-            f"=== WMS TELEMETRY DASHBOARD (50x50 ARENA) ===\n"
-            f"Mode HUD          : SERIOUS (INDUSTRIAL WMS) [Tekan 'M' Ganti Mode]\n"
-            f"Status Operasi    : {interaction_sys.prompt_text}\n"
-            f"Konsinyasi Kargo  : {pickup_info} -> Tujuan: {dropoff_info}\n"
-            f"----------------------------------------------------------------------\n"
-            f"METRIK KINERJA INFORMED SEARCH:\n"
-            f"  Parameter Evaluasi       | AGV Alpha (A*)      | AGV Beta (GBFS)\n"
-            f"  Total Biaya Rute (Cost)  | {cost_a.ljust(19)} | {cost_b}\n"
-            f"  Simpul Dieksplorasi      | {nodes_a.ljust(19)} | {nodes_b}\n"
-            f"  Waktu Kalkulasi Jalur    | {time_a.ljust(19)} | {time_b}\n"
-            f"  Progres Langkah Navigasi | {steps_a.ljust(19)} | {steps_b}\n"
-            f"  Status State Mesin       | {robot_a.state.value[:17].ljust(19)} | {robot_b.state.value[:17]}\n"
-            f"----------------------------------------------------------------------\n"
-            f"ANALISIS BOTTLENECK JARINGAN:\n"
-            f"  Simpul Beririsan         : {shared_count} sel lorong ({cong_pct:.1f}% koridor bersama)\n"
-            f"  Tingkat Resiko Macet     : {risk_str}\n"
-            f"  Kecepatan Armada         : {mission_mgr.current_speed:.1f}x [Atur dgn +/-]\n"
-            f"  Hasil Evaluasi Efisiensi : {outcome_str}"
+            f" [ WMS INDUSTRIAL TELEMETRY DASHBOARD ]          ● SISTEM ONLINE\n"
+            f" HEURISTIK AKTIF : [ {h_name} ]  (h = {h_formula})\n"
+            f" [H] Ganti Heuristik (Manhattan / Euclidean / Chebyshev / Octile)\n"
+            f" ----------------------------------------------------------------------\n"
+            f" STATUS OPERASI  : {interaction_sys.prompt_text}\n"
+            f" KONTAINER KARGO : {pickup_info} -> TUJUAN: {dropoff_info}\n"
+            f" ======================================================================\n"
+            f" METRIK SEARCH          | [CYAN] AGV Alpha (A*)   | [AMBER] Beta (GBFS)\n"
+            f" ----------------------------------------------------------------------\n"
+            f" Biaya Rute (Cost)      | {cost_a.ljust(22)} | {cost_b}\n"
+            f" Simpul Dieksplorasi    | {nodes_a.ljust(22)} | {nodes_b}\n"
+            f" Waktu Komputasi Jalur  | {time_a.ljust(22)} | {time_b}\n"
+            f" Progres Navigasi       | {steps_a.ljust(22)} | {steps_b}\n"
+            f" Status Robot           | {robot_a.state.value[:20].ljust(22)} | {robot_b.state.value[:20]}\n"
+            f" ======================================================================\n"
+            f" BOTTLENECK JARINGAN    : {shared_count} sel lorong ({cong_pct:.1f}%) | {risk_str}\n"
+            f" KECEPATAN: {mission_mgr.current_speed:.1f}x [+/-] | EVALUASI: {outcome_str}"
         )
 
         if new_text != self._last_rendered_text:

@@ -17,6 +17,7 @@ from src.config import (
     MAX_ROBOT_SPEED,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100
+from src.cognition.heuristics import AVAILABLE_HEURISTICS
 from src.cognition.pathfinding import DualPathPlanner, DualRacePlan
 from src.behavior.robot_controller import AGVRobot, RobotState
 from src.environment.interactive_shelf import InteractiveShelf
@@ -46,6 +47,13 @@ class MissionManager:
         self.selected_pickup_shelf: Optional[InteractiveShelf] = None
         self.selected_dropoff_shelf: Optional[InteractiveShelf] = None
         self.dual_plan: Optional[DualRacePlan] = None
+
+        # Konfigurasi Heuristik Dinamis
+        self.heuristic_names = ["Manhattan", "Euclidean", "Chebyshev", "Octile"]
+        self.heuristic_idx = 0
+        self.current_heuristic_name = "Manhattan"
+        self.current_heuristic_info = AVAILABLE_HEURISTICS["Manhattan"]
+        self.current_heuristic_fn = AVAILABLE_HEURISTICS["Manhattan"]["fn"]
 
         self.is_race_active: bool = False
         self.race_start_time: Optional[float] = None
@@ -94,6 +102,7 @@ class MissionManager:
             spawn_beta=self.robot_beta.spawn_coord,
             pickup_access=pickup_access,
             dropoff_access=dropoff_access,
+            heuristic=self.current_heuristic_fn,
         )
 
         plan = self.dual_plan
@@ -178,6 +187,53 @@ class MissionManager:
         self.robot_alpha.speed = self.current_speed
         self.robot_beta.speed = self.current_speed
         return self.current_speed
+
+    def cycle_heuristic(self) -> str:
+        """Beralih ke heuristik berikutnya dalam siklus (Manhattan -> Euclidean -> Chebyshev -> Octile)."""
+        self.heuristic_idx = (self.heuristic_idx + 1) % len(self.heuristic_names)
+        self.current_heuristic_name = self.heuristic_names[self.heuristic_idx]
+        self.current_heuristic_info = AVAILABLE_HEURISTICS[self.current_heuristic_name]
+        self.current_heuristic_fn = self.current_heuristic_info["fn"]
+
+        # Jika misi sedang berjalan atau rak sudah dipilih, rencanakan ulang segera!
+        if self.selected_pickup_shelf and self.selected_dropoff_shelf:
+            self.replan_race()
+        return self.current_heuristic_name
+
+    def replan_race(self):
+        """Menghitung ulang rute dual-robot dengan fungsi heuristik yang baru dipilih."""
+        if not (self.selected_pickup_shelf and self.selected_dropoff_shelf):
+            return
+        pickup_coord = self.selected_pickup_shelf.shelf_data.coord
+        dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord
+
+        pickup_access = self.graph.get_shelf_access_node(pickup_coord, from_coord=SPAWN_ALPHA)
+        dropoff_access = self.graph.get_shelf_access_node(dropoff_coord, from_coord=pickup_access)
+
+        self.dual_plan = DualPathPlanner.plan_dual_race(
+            graph=self.graph,
+            spawn_alpha=self.robot_alpha.spawn_coord,
+            spawn_beta=self.robot_beta.spawn_coord,
+            pickup_access=pickup_access,
+            dropoff_access=dropoff_access,
+            heuristic=self.current_heuristic_fn,
+        )
+
+        plan = self.dual_plan
+        # Jika balapan sedang berjalan dan belum selesai, terapkan pembaruan rute ke robot
+        if self.is_race_active and not self.race_finished and plan.alpha_plan.leg1.success and plan.beta_plan.leg1.success:
+            self.robot_alpha.set_mission_legs(
+                leg1_path=plan.alpha_plan.leg1.path,
+                leg2_path=plan.alpha_plan.leg2.path,
+                on_pickup=self._on_robot_pickup,
+                on_dropoff=self._on_robot_dropoff,
+            )
+            self.robot_beta.set_mission_legs(
+                leg1_path=plan.beta_plan.leg1.path,
+                leg2_path=plan.beta_plan.leg2.path,
+                on_pickup=self._on_robot_pickup,
+                on_dropoff=self._on_robot_dropoff,
+            )
 
     def trigger_random_mission(self) -> bool:
         """

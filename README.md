@@ -157,6 +157,7 @@ KKA-ETS-Implementation/
 | :--- | :--- | :--- |
 | **Klik Kiri Mouse** | - | **Raycasting Point-and-Click**: Klik 1 pada rak kargo (Pick-up), Klik 2 pada rak kosong (Drop-off). |
 | **`[M]`** | **`[Mode HUD]`** | **Toggle HUD Mode Ganda**: Beralih antara **Serious (WMS Analytics)** dan **Gamifikasi (Arcade)**. |
+| **`[H]`** | **`[Heuristik: ...]`** | **Ganti Heuristik Informed Search**: Beralih antara **Manhattan ($L_1$)**, **Euclidean ($L_2$)**, **Chebyshev ($L_\infty$)**, dan **Octile**. Rute langsung dihitung ulang secara real-time! |
 | **`[G]`** | **`[Misi Acak]`** | **Instan Random Race**: Otomatis memilih sepasang rak acak dan langsung meluncurkan balapan! |
 | **`[Spasi]`** | **`[Jeda / Lanjut]`** | Menjeda (*pause*) atau melanjutkan pergerakan armada AGV. |
 | **`[R]`** | **`[Reset]`** | Mengembalikan kedua robot kembali ke stasiun dock pojok kiri bawah. |

@@ -7,6 +7,7 @@ from .heuristics import (
     euclidean_distance,
     octile_distance,
     chebyshev_distance,
+    AVAILABLE_HEURISTICS,
 )
 from .warehouse_graph import (
     WarehouseGraph100,
@@ -29,6 +30,7 @@ __all__ = [
     "euclidean_distance",
     "octile_distance",
     "chebyshev_distance",
+    "AVAILABLE_HEURISTICS",
     "WarehouseGraph100",
     "WarehouseGraph50",
     "WarehouseGraph",

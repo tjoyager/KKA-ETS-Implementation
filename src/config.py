@@ -67,14 +67,22 @@ COLOR_BETA_TRAIL = (231, 76, 60)         # Merah Oranye Api (Sub-optimal Path)
 # ============================================================================
 # WARNA & VISUAL RAK (SHELF) & KARGO
 # ============================================================================
-COLOR_SHELF_FRAME = (45, 65, 90)         # Rangka baja biru industrial
-COLOR_SHELF_BEAM = (235, 125, 35)        # Balok penopang oranye keselamatan
+COLOR_SHELF_FRAME = (45, 85, 130)        # Rangka baja biru industrial modern bergradasi
+COLOR_SHELF_BEAM = (245, 130, 32)        # Balok penopang oranye keselamatan (High-visibility)
+COLOR_SHELF_TOP = (250, 165, 45)         # Dek palet emas keselamatan atas
 COLOR_SHELF_HOVER = (255, 235, 59)       # Kuning terang saat disorot mouse
 COLOR_SHELF_PICKUP = (0, 229, 255)       # Cyan neon untuk titik jemput (Pick-up)
 COLOR_SHELF_DROPOFF = (224, 64, 251)     # Magenta neon untuk titik antar (Drop-off)
 
-COLOR_CARGO_BOX = (180, 135, 90)         # Kardus cokelat karton standar
-COLOR_CARGO_PRIORITY = (241, 196, 15)    # Emas kontainer kargo bernilai tinggi
+COLOR_WALL = (38, 44, 56)                # Dinding pelindung baja gelap
+COLOR_WALL_TRIM = (245, 185, 25)         # Garis marka kuning keselamatan (Hazard Yellow)
+
+COLOR_FLOOR_BASE = (32, 38, 48)          # Lantai beton epoksi abu-abu gelap industri
+COLOR_FLOOR_GRID = (64, 76, 96)          # Garis kisi lantai presisi
+COLOR_HIGHWAY = (240, 195, 40)           # Marka koridor arteri utama (Cross Aisle)
+
+COLOR_CARGO_BOX = (195, 145, 95)         # Kardus cokelat karton standar
+COLOR_CARGO_PRIORITY = (255, 205, 30)    # Emas kontainer kargo bernilai tinggi
 
 # ============================================================================
 # JALUR BERKAS ASET MODEL 3D EKSTERNAL

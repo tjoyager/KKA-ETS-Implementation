@@ -89,8 +89,9 @@ class GamificationHUD:
         stars = "[*]" * mission_mgr.star_rating
 
         # Teks Banner Atas
+        h_tag = mission_mgr.current_heuristic_name.upper()
         new_top = (
-            f"[WAREHOUSE SHOWDOWN] A* SEARCH (CYAN) vs GBFS (ORANGE)\n"
+            f"[LOGISTICS RUSH] A* (CYAN) vs GBFS (ORANGE) | HEURISTIK: {h_tag} [H]\n"
             f"TIME-ATTACK: {timer_str} | SCORE: {mission_mgr.score:,} PTS | COMBO: x{mission_mgr.combo_multiplier}\n"
             f"RATING MISI: {stars} ({mission_mgr.star_rating}/5) | {mission_mgr.rating_explanation}"
         )

@@ -43,3 +43,31 @@ def chebyshev_distance(a: Coord, b: Coord) -> float:
     Menghitung jarak Chebyshev: max(|x1 - x2|, |y1 - y2|).
     """
     return float(max(abs(a[0] - b[0]), abs(a[1] - b[1])))
+
+
+AVAILABLE_HEURISTICS = {
+    "Manhattan": {
+        "fn": manhattan_distance,
+        "name": "Manhattan (L1)",
+        "formula": "|dx| + |dy|",
+        "description": "Optimal untuk grid ortogonal 4-arah (Admissible & Konsisten)",
+    },
+    "Euclidean": {
+        "fn": euclidean_distance,
+        "name": "Euclidean (L2)",
+        "formula": "sqrt(dx^2 + dy^2)",
+        "description": "Jarak garis lurus (Admissible, eksplorasi simpul lebih luas)",
+    },
+    "Chebyshev": {
+        "fn": chebyshev_distance,
+        "name": "Chebyshev (Linf)",
+        "formula": "max(|dx|, |dy|)",
+        "description": "Admissible untuk 8-arah (Underestimates untuk 4-arah)",
+    },
+    "Octile": {
+        "fn": octile_distance,
+        "name": "Octile",
+        "formula": "dx + dy + (sqrt(2)-2)*min",
+        "description": "Metrik diagonal D=1, D2=1.414",
+    },
+}

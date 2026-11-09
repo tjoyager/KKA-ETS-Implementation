@@ -39,85 +39,104 @@ class UIController:
         self._create_screen_buttons()
 
     def _create_screen_buttons(self):
-        """Menempatkan deretan tombol aksi di bagian bawah layar."""
-        btn_y = -0.45
-        btn_h = 0.054
+        """Menempatkan deretan tombol aksi modern di dermaga kontrol bagian bawah layar."""
+        btn_y = -0.455
+        btn_h = 0.052
+
+        # Latar belakang dock bar kontrol modern
+        Entity(
+            parent=camera.ui,
+            model='quad',
+            position=Vec3(0, btn_y, 0.01),
+            scale=Vec3(1.68, btn_h * 1.35, 1),
+            color=color.rgba32(14, 18, 26, 220),
+        )
 
         # 1. Tombol Ganti Mode HUD (Serious vs Gamifikasi)
         self.btn_hud_mode = Button(
-            text="Mode HUD: Serious [M]",
-            position=Vec3(-0.64, btn_y, 0),
-            scale=Vec3(0.24, btn_h, 1),
-            color=color.rgb32(41, 128, 185),
-            text_size=0.82,
+            text="HUD: Serious [M]",
+            position=Vec3(-0.68, btn_y, 0),
+            scale=Vec3(0.18, btn_h, 1),
+            color=color.rgb32(35, 95, 155),
+            text_size=0.80,
             on_click=self.toggle_hud_mode,
         )
 
-        # 2. Tombol Misi Acak (Random Race)
+        # 2. Tombol Pemilih Heuristik Dinamis (Manhattan / Euclidean / Chebyshev / Octile)
+        self.btn_heuristic = Button(
+            text="Heuristik: Manhattan [H]",
+            position=Vec3(-0.475, btn_y, 0),
+            scale=Vec3(0.21, btn_h, 1),
+            color=color.rgb32(20, 140, 120),
+            text_size=0.78,
+            on_click=self.cycle_heuristic,
+        )
+
+        # 3. Tombol Misi Acak (Random Race)
         Button(
             text="Misi Acak [G]",
-            position=Vec3(-0.41, btn_y, 0),
-            scale=Vec3(0.18, btn_h, 1),
-            color=color.rgb32(142, 68, 173),
-            text_size=0.82,
+            position=Vec3(-0.295, btn_y, 0),
+            scale=Vec3(0.14, btn_h, 1),
+            color=color.rgb32(125, 65, 160),
+            text_size=0.80,
             on_click=self.trigger_random_mission,
         )
 
-        # 3. Tombol Jeda / Lanjut
+        # 4. Tombol Jeda / Lanjut
         self.btn_pause = Button(
             text="Jeda [Spasi]",
-            position=Vec3(-0.23, btn_y, 0),
-            scale=Vec3(0.15, btn_h, 1),
-            color=color.rgb32(230, 126, 34),
-            text_size=0.82,
+            position=Vec3(-0.165, btn_y, 0),
+            scale=Vec3(0.11, btn_h, 1),
+            color=color.rgb32(195, 105, 30),
+            text_size=0.80,
             on_click=self.toggle_pause,
         )
 
-        # 4. Tombol Reset
+        # 5. Tombol Reset
         Button(
             text="Reset [R]",
-            position=Vec3(-0.08, btn_y, 0),
-            scale=Vec3(0.13, btn_h, 1),
-            color=color.rgb32(192, 57, 43),
-            text_size=0.82,
+            position=Vec3(-0.05, btn_y, 0),
+            scale=Vec3(0.11, btn_h, 1),
+            color=color.rgb32(175, 45, 40),
+            text_size=0.80,
             on_click=self.reset_all,
         )
 
-        # 5. Tombol Kamera
+        # 6. Tombol Kamera
         self.btn_cam = Button(
             text="Kamera: Isometrik [V]",
-            position=Vec3(0.11, btn_y, 0),
-            scale=Vec3(0.22, btn_h, 1),
-            color=color.rgb32(52, 73, 94),
-            text_size=0.82,
+            position=Vec3(0.115, btn_y, 0),
+            scale=Vec3(0.20, btn_h, 1),
+            color=color.rgb32(50, 70, 95),
+            text_size=0.80,
             on_click=self.cycle_camera,
         )
 
-        # 6. Tombol Pengatur Kecepatan
+        # 7. Tombol Pengatur Kecepatan
         Button(
             text="Lambat [-]",
-            position=Vec3(0.29, btn_y, 0),
-            scale=Vec3(0.12, btn_h, 1),
-            color=color.rgb32(44, 62, 80),
-            text_size=0.78,
+            position=Vec3(0.275, btn_y, 0),
+            scale=Vec3(0.10, btn_h, 1),
+            color=color.rgb32(45, 58, 75),
+            text_size=0.76,
             on_click=lambda: self.adjust_speed(-1.5),
         )
         Button(
             text="Cepat [+]",
-            position=Vec3(0.42, btn_y, 0),
-            scale=Vec3(0.12, btn_h, 1),
-            color=color.rgb32(44, 62, 80),
-            text_size=0.78,
+            position=Vec3(0.385, btn_y, 0),
+            scale=Vec3(0.10, btn_h, 1),
+            color=color.rgb32(45, 58, 75),
+            text_size=0.76,
             on_click=lambda: self.adjust_speed(1.5),
         )
 
-        # 7. Tombol Keluar
+        # 8. Tombol Keluar
         Button(
             text="Keluar [Esc]",
-            position=Vec3(0.59, btn_y, 0),
-            scale=Vec3(0.15, btn_h, 1),
-            color=color.rgb32(35, 40, 50),
-            text_size=0.8,
+            position=Vec3(0.51, btn_y, 0),
+            scale=Vec3(0.13, btn_h, 1),
+            color=color.rgb32(32, 38, 48),
+            text_size=0.80,
             on_click=application.quit,
         )
 
@@ -128,11 +147,17 @@ class UIController:
         self.hud_gamification.set_visible(not self.is_serious_mode)
 
         if self.is_serious_mode:
-            self.btn_hud_mode.text = "Mode HUD: Serious [M]"
-            self.btn_hud_mode.color = color.rgb32(41, 128, 185)
+            self.btn_hud_mode.text = "HUD: Serious [M]"
+            self.btn_hud_mode.color = color.rgb32(35, 95, 155)
         else:
-            self.btn_hud_mode.text = "Mode HUD: Game [M]"
+            self.btn_hud_mode.text = "HUD: Game [M]"
             self.btn_hud_mode.color = color.rgb32(233, 30, 99)
+
+    def cycle_heuristic(self):
+        """Beralih ke heuristik berikutnya dan perbarui teks tombol."""
+        new_h = self.mission_mgr.cycle_heuristic()
+        self.btn_heuristic.text = f"Heuristik: {new_h} [H]"
+        self.interaction_sys.prompt_text = f"Heuristik diganti ke: {new_h.upper()}. Rute dihitung ulang."
 
     def trigger_random_mission(self):
         """Menjalankan balapan acak otomatis."""
@@ -189,6 +214,8 @@ class UIController:
             self.interaction_sys.handle_click()
         elif key == 'm':
             self.toggle_hud_mode()
+        elif key == 'h':
+            self.cycle_heuristic()
         elif key == 'g':
             self.trigger_random_mission()
         elif key == 'space':

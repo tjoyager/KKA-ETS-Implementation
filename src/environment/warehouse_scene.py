@@ -33,6 +33,9 @@ from src.config import (
     COLOR_ALPHA_PRIMARY,
     COLOR_BETA_PRIMARY,
     COLOR_SHELF_FRAME,
+    COLOR_SHELF_BEAM,
+    COLOR_WALL,
+    COLOR_WALL_TRIM,
     CAMERA_PRESETS,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100, CellType, ShelfData
@@ -45,16 +48,23 @@ Coord = Tuple[int, int]
 def _create_procedural_grid_texture(resolution: int = 64) -> Texture:
     """
     Membuat tekstur petak lantai gudang prosedural beresolusi tinggi menggunakan PIL.
-    Warna dasar beton gelap dengan garis tepi lorong keselamatan presisi.
+    Warna dasar beton epoksi modern dengan garis tepi lorong keselamatan presisi.
     """
-    img = Image.new("RGBA", (resolution, resolution), color=(26, 30, 38, 255))
-    border_col = (48, 56, 70, 255)
+    img = Image.new("RGBA", (resolution, resolution), color=(30, 36, 46, 255))
+    border_col = (62, 74, 94, 255)
+    dot_col = (46, 54, 68, 255)
 
     for i in range(resolution):
-        img.putpixel((i, 0), border_col)
-        img.putpixel((i, resolution - 1), border_col)
-        img.putpixel((0, i), border_col)
-        img.putpixel((resolution - 1, i), border_col)
+        # 2px border for high-contrast crisp grid lines
+        for w in (0, 1, resolution - 2, resolution - 1):
+            img.putpixel((i, w), border_col)
+            img.putpixel((w, i), border_col)
+
+    # Subtle center crosshair guide marker
+    mid = resolution // 2
+    for d in (-2, -1, 0, 1, 2):
+        img.putpixel((mid + d, mid), dot_col)
+        img.putpixel((mid, mid + d), dot_col)
 
     return Texture(img)
 
@@ -78,7 +88,9 @@ class WarehouseScene(Entity):
 
         # Kontainer static mesh combining
         self.static_racks_parent: Optional[Entity] = None
+        self.static_beams_parent: Optional[Entity] = None
         self.static_walls_parent: Optional[Entity] = None
+        self.static_wall_trims_parent: Optional[Entity] = None
         self.floor: Optional[Entity] = None
 
         # ---------------------------------------------------------------------
@@ -162,9 +174,10 @@ class WarehouseScene(Entity):
         # =====================================================================
         # TAHAP 2: SPAWN VISUAL RAK & SEPARATED COLLIDERS SECARA BATCH
         # =====================================================================
-        self._update_progress("Menyiapkan Model 3D Rak & Aset...", 0.18)
+        self._update_progress("Menyiapkan Model 3D Rak & Palet Oranye...", 0.18)
         shelf_model = AssetLoader.get_shelf_model()
         self.static_racks_parent = Entity(color=color.rgb32(*COLOR_SHELF_FRAME))
+        self.static_beams_parent = Entity(color=color.rgb32(*COLOR_SHELF_BEAM))
         yield
 
         all_shelves: List[ShelfData] = list(self.graph.shelves.values())
@@ -176,7 +189,7 @@ class WarehouseScene(Entity):
             for sdata in batch:
                 world_pos = grid_to_world(sdata.x, sdata.y, 0.0)
 
-                # 1. Model visual statis (dijadikan anak dari static_racks_parent untuk di-combine)
+                # 1. Rangka tiang baja industrial (Biru Modern)
                 Entity(
                     parent=self.static_racks_parent,
                     model=shelf_model,
@@ -184,7 +197,21 @@ class WarehouseScene(Entity):
                     scale=Vec3(0.92, 1.4, 0.92),
                 )
 
-                # 2. Separated Collider Box (InteractiveShelf murni untuk raycasting)
+                # 2. Dek palet keselamatan oranye (Tampak jelas & kontras dari Top-down & Isometrik)
+                Entity(
+                    parent=self.static_beams_parent,
+                    model='cube',
+                    position=world_pos + Vec3(0, 1.34, 0),
+                    scale=Vec3(0.88, 0.08, 0.88),
+                )
+                Entity(
+                    parent=self.static_beams_parent,
+                    model='cube',
+                    position=world_pos + Vec3(0, 0.68, 0),
+                    scale=Vec3(0.88, 0.06, 0.88),
+                )
+
+                # 3. Separated Collider Box (InteractiveShelf murni untuk raycasting)
                 shelf_ent = InteractiveShelf(shelf_data=sdata)
                 self.interactive_shelves[sdata.coord] = shelf_ent
 
@@ -198,13 +225,15 @@ class WarehouseScene(Entity):
         self._update_progress("Menggabungkan Mesh Rak Statis (Combining Racks)...", 0.75)
         yield  # Beri kesempatan render sebelum combine berjalan
         self.static_racks_parent.combine(auto_destroy=True)
+        self.static_beams_parent.combine(auto_destroy=True)
         yield
 
         # =====================================================================
         # TAHAP 4: SPAWN DINDING & COMBINE STATIS
         # =====================================================================
         self._update_progress("Membangun Dinding Luar & Sekat Partisi Labirin...", 0.82)
-        self.static_walls_parent = Entity(color=color.rgb32(75, 45, 45))
+        self.static_walls_parent = Entity(color=color.rgb32(*COLOR_WALL))
+        self.static_wall_trims_parent = Entity(color=color.rgb32(*COLOR_WALL_TRIM))
 
         # 4 Dinding Pembatas Luar
         arena_w = GRID_WIDTH + 2
@@ -216,7 +245,13 @@ class WarehouseScene(Entity):
         Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
         Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
 
-        # Sekat Partisi Labirin
+        # List Trim Kuning Keselamatan Atas Dinding Luar
+        Entity(parent=self.static_wall_trims_parent, model='cube', position=Vec3(0, wall_h + 0.05, arena_h / 2), scale=Vec3(arena_w, 0.1, wall_t * 1.05))
+        Entity(parent=self.static_wall_trims_parent, model='cube', position=Vec3(0, wall_h + 0.05, -arena_h / 2), scale=Vec3(arena_w, 0.1, wall_t * 1.05))
+        Entity(parent=self.static_wall_trims_parent, model='cube', position=Vec3(arena_w / 2, wall_h + 0.05, 0), scale=Vec3(wall_t * 1.05, 0.1, arena_h))
+        Entity(parent=self.static_wall_trims_parent, model='cube', position=Vec3(-arena_w / 2, wall_h + 0.05, 0), scale=Vec3(wall_t * 1.05, 0.1, arena_h))
+
+        # Sekat Partisi Labirin (Cul-de-Sacs)
         for y in range(self.graph.height):
             for x in range(self.graph.width):
                 if self.graph.grid[y, x] == CellType.WALL:
@@ -227,10 +262,18 @@ class WarehouseScene(Entity):
                         position=pos,
                         scale=Vec3(0.98, 2.0, 0.98),
                     )
+                    # Hazard yellow safety top cap
+                    Entity(
+                        parent=self.static_wall_trims_parent,
+                        model='cube',
+                        position=pos + Vec3(0, 1.05, 0),
+                        scale=Vec3(0.98, 0.12, 0.98),
+                    )
 
         self._update_progress("Menggabungkan Mesh Dinding (Combining Walls)...", 0.90)
         yield
         self.static_walls_parent.combine(auto_destroy=True)
+        self.static_wall_trims_parent.combine(auto_destroy=True)
         yield
 
         # =====================================================================
@@ -261,18 +304,32 @@ class WarehouseScene(Entity):
                 self._async_loader = None
 
     def _setup_lighting(self):
-        """Pencahayaan 3D industrial."""
-        window.color = color.rgb32(18, 22, 28)
-        AmbientLight(color=color.rgba(0.68, 0.68, 0.70, 1.0))
+        """Pencahayaan 3D industrial bergradasi dengan dual-directional highlight."""
+        window.color = color.rgb32(20, 25, 34)
+        AmbientLight(color=color.rgba(0.78, 0.80, 0.86, 1.0))
+
+        # Key Light (Warm Sunlight)
         sun = DirectionalLight(shadows=False)
-        sun.look_at(Vec3(0.5, -1.2, 0.7))
+        sun.color = color.rgba(0.92, 0.90, 0.86, 1.0)
+        sun.look_at(Vec3(0.6, -1.2, 0.7))
+
+        # Fill Light (Cool Industrial Floodlight)
+        fill = DirectionalLight(shadows=False)
+        fill.color = color.rgba(0.40, 0.48, 0.62, 1.0)
+        fill.look_at(Vec3(-0.6, -0.8, -0.6))
 
     def _build_dock_stations(self):
-        """Stasiun pengisian dock pojok kiri bawah."""
+        """Stasiun pengisian dock pojok kiri bawah dengan aksen neon bergradasi."""
         dock_model = AssetLoader.get_dock_model()
 
         # Dock Alpha (A*) di (1, 1)
         pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.04)
+        Entity(
+            model='cube',
+            position=pos_a - Vec3(0, 0.02, 0),
+            scale=Vec3(1.5, 0.04, 1.5),
+            color=color.rgba32(0, 195, 255, 140),
+        )
         Entity(
             model=dock_model,
             position=pos_a,
@@ -290,6 +347,12 @@ class WarehouseScene(Entity):
 
         # Dock Beta (GBFS) di (1, 3)
         pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.04)
+        Entity(
+            model='cube',
+            position=pos_b - Vec3(0, 0.02, 0),
+            scale=Vec3(1.5, 0.04, 1.5),
+            color=color.rgba32(255, 140, 0, 140),
+        )
         Entity(
             model=dock_model,
             position=pos_b,

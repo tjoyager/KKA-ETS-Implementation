@@ -39,7 +39,7 @@ def run_warehouse_simulation():
         fullscreen=False,
         size=(1280, 720),
     )
-    window.fps_counter.enabled = True
+    window.fps_counter.enabled = False
     window.exit_button.visible = False
 
     # 2. Bangun Graf Gudang Kompleks 50x50
@@ -107,6 +107,7 @@ def run_warehouse_simulation():
         print("  - [Async Loading]      : Pemuatan bertahap dengan Loading Screen di tengah layar")
         print("\nFitur Interaktif Aktif:")
         print("  - [Point-and-Click]    : Klik Rak Kargo (Pick-up) lalu Klik Rak Kosong (Drop-off)")
+        print("  - [Heuristik (H)]      : Ganti Heuristik (Manhattan / Euclidean / Chebyshev / Octile)")
         print("  - [Misi Acak (G)]      : Balapan instan acak A* vs GBFS")
         print("  - [Mode HUD (M)]       : Beralih antara Serious (WMS) dan Gamifikasi (Arcade)")
         print("  - [Kamera (V)]         : Isometrik -> Top-Down -> Follow Alpha -> Follow Beta -> Bebas")
