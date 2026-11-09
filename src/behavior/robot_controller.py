@@ -63,24 +63,21 @@ class AGVRobot(Entity):
         self.trail_col = color.rgb32(*trail_color_rgb)
         self.speed = speed
 
-        spawn_world = grid_to_world(spawn_coord[0], spawn_coord[1], 0.16)
+        spawn_world = grid_to_world(spawn_coord[0], spawn_coord[1], 0.0)
 
         super().__init__(
             model=AssetLoader.get_agv_model(),
             position=spawn_world,
-            scale=Vec3(1.0, 1.0, 1.0),
+            scale=Vec3(0.55, 0.55, 0.55),
             color=self.primary_col,
             **kwargs,
         )
 
         # Elemen Visual Tambahan Robot
-        # 1. Bumper keselamatan bawah
-        Entity(parent=self, model='cube', position=Vec3(0, -0.05, 0), scale=Vec3(0.84, 0.1, 0.84), color=color.rgb32(25, 28, 35))
+        # 1. Bumper (dinonaktifkan - sudah ada di model 3D)
         # 2. Sensor LIDAR dome berputar
-        self.lidar_dome = Entity(parent=self, model=Cylinder(resolution=16), position=Vec3(0, 0.28, 0.18), scale=Vec3(0.24, 0.14, 0.24), color=color.rgb32(0, 230, 200))
+        self.lidar_dome = Entity(parent=self, enabled=False)
         # 3. Lampu LED depan kembar
-        Entity(parent=self, model='sphere', position=Vec3(0.24, 0.04, 0.40), scale=Vec3(0.12, 0.08, 0.08), color=color.white)
-        Entity(parent=self, model='sphere', position=Vec3(-0.24, 0.04, 0.40), scale=Vec3(0.12, 0.08, 0.08), color=color.white)
 
         # 4. Kotak kargo di atas dek (awalnya disembunyikan sampai robot menjemput barang)
         self.deck_cargo = Entity(
@@ -96,7 +93,7 @@ class AGVRobot(Entity):
         self.label_tag = Text(
             parent=self,
             text=f"{name}\n[{algorithm_label}]",
-            position=Vec3(0, 1.6, 0),
+            position=Vec3(0, 2.2, 0),
             scale=1.1,
             color=self.primary_col,
             billboard=True,
@@ -124,10 +121,10 @@ class AGVRobot(Entity):
     def reset_to_dock(self):
         """Mereset posisi robot ke stasiun dock awal dan menonaktifkan trail (tanpa destroy)."""
         self.clear_trail()
-        self.position = grid_to_world(self.spawn_coord[0], self.spawn_coord[1], 0.16)
+        self.position = grid_to_world(self.spawn_coord[0], self.spawn_coord[1], 0.0)
         self.rotation_y = 0.0
         self.state = RobotState.IDLE_DOCK
-        self.deck_cargo.enabled = False
+        self.model = AssetLoader.get_agv_model()
         self.leg1_waypoints.clear()
         self.leg2_waypoints.clear()
         self.active_waypoints.clear()
@@ -176,8 +173,8 @@ class AGVRobot(Entity):
         self.on_pickup_callback = on_pickup
         self.on_dropoff_callback = on_dropoff
 
-        self.leg1_waypoints = [grid_to_world(p[0], p[1], 0.16) for p in leg1_path]
-        self.leg2_waypoints = [grid_to_world(p[0], p[1], 0.16) for p in leg2_path]
+        self.leg1_waypoints = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
+        self.leg2_waypoints = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
 
         self.total_mission_steps = len(leg1_path) + len(leg2_path)
         self.total_steps_executed = 0
@@ -237,8 +234,8 @@ class AGVRobot(Entity):
             self.spawn_trail_marker(target_pos)
         else:
             ratio = step / dist
-            self.position.x += dx * ratio
-            self.position.z += dz * ratio
+            self.x += dx * ratio
+            self.z += dz * ratio
 
     def _handle_leg_completion(self):
         """Dipanggil saat robot mencapai titik akhir etape rute."""
@@ -260,13 +257,13 @@ class AGVRobot(Entity):
         """Melanjutkan pergerakan setelah animasi ambil / taruh kargo selesai."""
         if self.state == RobotState.LOADING_CARGO:
             # Kargo berhasil dimuat ke dek, mulai balapan ke Drop-off!
-            self.deck_cargo.enabled = True
+            self.model = AssetLoader.get_agv_loaded_model()
             self.active_waypoints = self.leg2_waypoints
             self.waypoint_idx = 0
             self.state = RobotState.MOVING_TO_DROPOFF
 
         elif self.state == RobotState.UNLOADING_CARGO:
             # Kargo berhasil diturunkan, misi selesai!
-            self.deck_cargo.enabled = False
+            self.model = AssetLoader.get_agv_model()
             self.state = RobotState.FINISHED
             self.finish_time = time.time()

@@ -12,7 +12,10 @@ from ursina import Entity, Vec3, color, load_model
 
 from src.config import (
     MODEL_PATH_AGV,
+    MODEL_PATH_AGV_LOADED,
     MODEL_PATH_SHELF,
+    MODEL_PATH_SHELF_EMPTY,
+    MODEL_PATH_SHELF_OCCUPIED,
     MODEL_PATH_CARGO,
     MODEL_PATH_DOCK,
 )
@@ -89,3 +92,15 @@ class AssetLoader:
         if cls._dock_model is None:
             cls._dock_model = cls.load_model_safe(MODEL_PATH_DOCK, fallback_model_name="cube")
         return cls._dock_model
+
+    @classmethod
+    def get_shelf_empty_model(cls):
+        return cls.load_model_safe(MODEL_PATH_SHELF_EMPTY, fallback_model_name="cube")
+    
+    @classmethod
+    def get_shelf_occupied_model(cls):
+        return cls.load_model_safe(MODEL_PATH_SHELF_OCCUPIED, fallback_model_name="cube")
+    
+    @classmethod
+    def get_agv_loaded_model(cls):
+        return cls.load_model_safe(MODEL_PATH_AGV_LOADED, fallback_model_name="cube")
