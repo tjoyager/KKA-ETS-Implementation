@@ -74,8 +74,8 @@ class AGVRobot(Entity):
         )
 
         self.is_beta = ("Beta" in name or "GBFS" in algorithm_label)
-        halo_radius = 1.40 if self.is_beta else 1.15
-        beacon_y = 1.15 if self.is_beta else 0.95
+        halo_radius = 1.55 if self.is_beta else 1.22
+        beacon_y = 1.20 if self.is_beta else 0.95
         label_y = 3.4 if self.is_beta else 2.6
 
         # Elemen Visual Tambahan Robot
@@ -85,7 +85,7 @@ class AGVRobot(Entity):
             parent=self,
             model=Cylinder(resolution=24),
             scale=Vec3(halo_radius, 0.08, halo_radius),
-            position=Vec3(0, 0.06 if not self.is_beta else 0.08, 0),
+            position=Vec3(0, 0.08 if self.is_beta else 0.05, 0),
             color=self.primary_col,
         )
 
@@ -93,7 +93,7 @@ class AGVRobot(Entity):
         self.top_beacon = Entity(
             parent=self,
             model='sphere',
-            scale=Vec3(0.28, 0.28, 0.28),
+            scale=Vec3(0.30, 0.30, 0.30),
             position=Vec3(0, beacon_y, 0),
             color=self.primary_col,
         )
@@ -147,6 +147,7 @@ class AGVRobot(Entity):
         self.rotation_y = 0.0
         self.state = RobotState.IDLE_DOCK
         self.model = AssetLoader.get_agv_model()
+        self.color = self.primary_col
         self.leg1_waypoints.clear()
         self.leg2_waypoints.clear()
         self.active_waypoints.clear()
@@ -230,8 +231,8 @@ class AGVRobot(Entity):
         raw_leg1 = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
         raw_leg2 = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
 
-        # Offset lateral: AGV Alpha di lajur kanan (+0.18), AGV Beta di lajur kiri (-0.18)
-        offset = -0.18 if self.is_beta else 0.18
+        # Separasi lajur lateral: Alpha di lajur kanan (+0.22), Beta di lajur kiri (-0.22)
+        offset = -0.22 if self.is_beta else 0.22
         self.leg1_waypoints = self._compute_lane_offset(raw_leg1, offset)
         self.leg2_waypoints = self._compute_lane_offset(raw_leg2, offset)
 
@@ -251,7 +252,7 @@ class AGVRobot(Entity):
     def update(self):
         """Loop pergerakan per frame (dipanggil otomatis oleh Ursina)."""
         # Efek denyut halus pada underglow neon robot agar dinamis dan selalu terlihat
-        base_r = 1.40 if self.is_beta else 1.15
+        base_r = 1.55 if self.is_beta else 1.22
         pulse = base_r + math.sin(time.time() * 5.0) * 0.08
         self.ground_halo.scale_x = pulse
         self.ground_halo.scale_z = pulse
@@ -323,6 +324,7 @@ class AGVRobot(Entity):
         if self.state == RobotState.LOADING_CARGO:
             # Kargo berhasil dimuat ke dek, mulai balapan ke Drop-off!
             self.model = AssetLoader.get_agv_loaded_model()
+            self.color = self.primary_col
             self.active_waypoints = self.leg2_waypoints
             self.waypoint_idx = 0
             self.state = RobotState.MOVING_TO_DROPOFF
@@ -330,5 +332,6 @@ class AGVRobot(Entity):
         elif self.state == RobotState.UNLOADING_CARGO:
             # Kargo berhasil diturunkan, misi selesai!
             self.model = AssetLoader.get_agv_model()
+            self.color = self.primary_col
             self.state = RobotState.FINISHED
             self.finish_time = time.time()

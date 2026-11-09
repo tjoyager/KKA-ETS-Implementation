@@ -71,7 +71,7 @@ COLOR_SHELF_FRAME = (45, 85, 130)        # Rangka baja biru industrial modern be
 COLOR_SHELF_BEAM = (245, 130, 32)        # Balok penopang oranye keselamatan (High-visibility)
 COLOR_SHELF_TOP = (250, 165, 45)         # Dek palet emas keselamatan atas
 COLOR_SHELF_HOVER = (255, 235, 59)       # Kuning terang saat disorot mouse
-COLOR_SHELF_PICKUP = (46, 204, 113)      # Hijau emerald neon untuk titik jemput (Pick-up) - Beda dari robot Alpha
+COLOR_SHELF_PICKUP = (0, 230, 118)       # Hijau mint neon untuk titik jemput (Pick-up) - Beda kontras dari Alpha cyan
 COLOR_SHELF_DROPOFF = (224, 64, 251)     # Magenta neon untuk titik antar (Drop-off)
 
 COLOR_WALL = (38, 44, 56)                # Dinding pelindung baja gelap
@@ -101,20 +101,20 @@ MODEL_PATH_CARGO = "assets/models/cargo.obj"
 CAMERA_PRESETS = {
     "isometrik": {
         "pos": (-65.0, 78.0, -65.0),
-        "target": (-8.0, 0.0, -8.0),
-        "fov": 46,
+        "target": (-4.0, 0.0, -4.0),
+        "fov": 48,
     },
     "topdown": {
-        "pos": (0.0, 95.0, -5.0),
-        "target": (0.0, 0.0, -5.0),
-        "fov": 55,
+        "pos": (0.0, 96.0, -3.0),
+        "target": (0.0, 0.0, -3.0),
+        "fov": 54,
     },
     "follow_alpha": {
-        "offset": (0.0, 12.0, -14.0),
+        "offset": (0.0, 16.0, -14.0),
         "fov": 55,
     },
     "follow_beta": {
-        "offset": (0.0, 12.0, -14.0),
+        "offset": (0.0, 16.0, -14.0),
         "fov": 55,
     },
 }

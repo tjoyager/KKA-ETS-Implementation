@@ -306,53 +306,52 @@ class WarehouseScene(Entity):
     def _build_dock_stations(self):
         """Stasiun pengisian dock pojok kiri bawah dengan aksen neon bergradasi."""
         dock_tower_model = AssetLoader.get_dock_model()
-        dock_pad_model = AssetLoader.load_model_safe("assets/models/dock.obj", "cube")
 
-        # Dock Alpha di (1, 1)
+        # Dock Alpha (A*) di (1, 1)
         pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
-        # 1. Pad lantai parkir pengisian daya robot Alpha
+        # Pad lantai parkir pengisian daya robot Alpha
         Entity(
-            model=dock_pad_model,
-            position=pos_a + Vec3(0, 0.02, 0),
-            scale=Vec3(0.95, 0.35, 0.95),
-            color=color.rgb32(0, 160, 220),
+            model='cube',
+            position=pos_a - Vec3(0, 0.02, 0),
+            scale=Vec3(1.4, 0.05, 1.4),
+            color=color.rgba32(0, 195, 255, 160),
         )
-        # 2. Menara charger terminal di tepi dinding barat (belakang robot)
+        # Menara charger terminal di tepi dinding barat (belakang robot)
         Entity(
             model=dock_tower_model,
-            position=pos_a + Vec3(-0.95, 0, 0),
+            position=pos_a + Vec3(-1.0, 0, 0),
             rotation=Vec3(0, 90, 0),
             scale=Vec3(0.55, 0.65, 0.55),
         )
         Text(
-            text="CHARGER BAY 1\n[ALPHA DOCK]",
-            position=pos_a + Vec3(-0.95, 1.8, 0),
-            scale=1.2,
+            text="DOCK ALPHA\n[A* Search]",
+            position=pos_a + Vec3(-1.0, 1.8, 0),
+            scale=1.3,
             color=color.rgb32(*COLOR_ALPHA_PRIMARY),
             billboard=True,
             origin=(0, 0),
         )
 
-        # Dock Beta di (1, 3)
+        # Dock Beta (GBFS) di (1, 3)
         pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.0)
-        # 1. Pad lantai parkir pengisian daya robot Beta
+        # Pad lantai parkir pengisian daya robot Beta
         Entity(
-            model=dock_pad_model,
-            position=pos_b + Vec3(0, 0.02, 0),
-            scale=Vec3(0.95, 0.35, 0.95),
-            color=color.rgb32(230, 120, 0),
+            model='cube',
+            position=pos_b - Vec3(0, 0.02, 0),
+            scale=Vec3(1.4, 0.05, 1.4),
+            color=color.rgba32(255, 140, 0, 160),
         )
-        # 2. Menara charger terminal di tepi dinding barat (belakang robot)
+        # Menara charger terminal di tepi dinding barat (belakang robot)
         Entity(
             model=dock_tower_model,
-            position=pos_b + Vec3(-0.95, 0, 0),
+            position=pos_b + Vec3(-1.0, 0, 0),
             rotation=Vec3(0, 90, 0),
             scale=Vec3(0.55, 0.65, 0.55),
         )
         Text(
-            text="CHARGER BAY 2\n[BETA DOCK]",
-            position=pos_b + Vec3(-0.95, 1.8, 0),
-            scale=1.2,
+            text="DOCK BETA\n[GBFS]",
+            position=pos_b + Vec3(-1.0, 1.8, 0),
+            scale=1.3,
             color=color.rgb32(*COLOR_BETA_PRIMARY),
             billboard=True,
             origin=(0, 0),
@@ -366,11 +365,13 @@ class WarehouseScene(Entity):
 
     def apply_camera_mode(self, mode: str, target_robot_pos: Optional[Vec3] = None):
         """Mengubah sudut pandang kamera dengan stabilisasi rotasi penuh (anti-gimbal lock)."""
+        from ursina import scene
         self.current_cam_mode = mode
 
-        # Selalu nonaktifkan free_cam jika beralih ke mode tetap
+        # Selalu pastikan kamera terlepas dari free_cam saat beralih ke mode tetap
         if self.free_cam and mode != "bebas":
             self.free_cam.disable()
+            camera.parent = scene
 
         if mode == "isometrik":
             cfg = CAMERA_PRESETS["isometrik"]
@@ -388,20 +389,25 @@ class WarehouseScene(Entity):
             camera.rotation_z = 0.0
 
         elif mode in ("follow_alpha", "follow_beta"):
-            cfg = CAMERA_PRESETS.get(mode, {"offset": (0.0, 14.0, -16.0), "fov": 55})
+            cfg = CAMERA_PRESETS.get(mode, {"offset": (0.0, 16.0, -14.0), "fov": 55})
             camera.fov = cfg.get("fov", 55)
             camera.rotation_z = 0.0
             if target_robot_pos is not None:
-                offset = cfg.get("offset", (0.0, 14.0, -16.0))
-                camera.position = target_robot_pos + Vec3(*offset)
+                offset = cfg.get("offset", (0.0, 16.0, -14.0))
+                desired = target_robot_pos + Vec3(*offset)
+                camera.position = Vec3(
+                    max(-23.5, min(23.5, desired.x)),
+                    desired.y,
+                    max(-23.5, min(23.5, desired.z)),
+                )
                 camera.look_at(target_robot_pos)
                 camera.rotation_z = 0.0
 
         elif mode == "bebas":
             if self.free_cam:
-                self.free_cam.enable()
                 self.free_cam.position = camera.position
                 self.free_cam.rotation = camera.rotation
+                self.free_cam.enable()
 
     def cycle_camera_mode(self, target_robot_pos: Optional[Vec3] = None) -> str:
         """Siklus pergantian sudut kamera."""
@@ -410,14 +416,18 @@ class WarehouseScene(Entity):
         self.apply_camera_mode(mode, target_robot_pos=target_robot_pos)
         return mode
 
-    def update_follow_camera(self, target_pos: Vec3, offset: Tuple[float, float, float] = (0.0, 14.0, -16.0)):
-        """Kamera mengekor posisi robot secara halus tanpa deviasi roll."""
+    def update_follow_camera(self, target_pos: Vec3, offset: Tuple[float, float, float] = (0.0, 16.0, -14.0)):
+        """Kamera mengekor posisi robot secara halus tanpa deviasi roll dan anti-tembus dinding."""
         if "follow" in self.current_cam_mode:
             desired_pos = target_pos + Vec3(*offset)
+            clamped_x = max(-23.5, min(23.5, desired_pos.x))
+            clamped_z = max(-23.5, min(23.5, desired_pos.z))
+            target_cam = Vec3(clamped_x, desired_pos.y, clamped_z)
+
             camera.position = Vec3(
-                camera.position.x + (desired_pos.x - camera.position.x) * 0.15,
-                camera.position.y + (desired_pos.y - camera.position.y) * 0.15,
-                camera.position.z + (desired_pos.z - camera.position.z) * 0.15,
+                camera.position.x + (target_cam.x - camera.position.x) * 0.15,
+                camera.position.y + (target_cam.y - camera.position.y) * 0.15,
+                camera.position.z + (target_cam.z - camera.position.z) * 0.15,
             )
             camera.look_at(target_pos)
             camera.rotation_z = 0.0

@@ -8,7 +8,6 @@ sekaligus siap merender model kompleks (.obj / .gltf) secara native jika tersedi
 
 import os
 from typing import Optional
-from ursina import Entity, Vec3, color, load_model
 
 from src.config import (
     MODEL_PATH_AGV,
@@ -23,14 +22,11 @@ from src.config import (
 
 class AssetLoader:
     """
-    Pengelola pemuatan model 3D dengan fallback cerdas dan caching langsung.
+    Pengelola pemuatan model 3D dengan fallback cerdas.
+    Mengembalikan path string berkas model agar Ursina Engine menginstansiasi
+    salinan mesh independen untuk setiap entitas (mencegah bug node-stealing / reparent conflict).
     """
-    _cache = {}
     _checked_cache_dir = False
-    _agv_model = None
-    _shelf_model = None
-    _cargo_model = None
-    _dock_model = None
 
     @classmethod
     def _ensure_cache_dirs(cls):
@@ -40,67 +36,48 @@ class AssetLoader:
             cls._checked_cache_dir = True
 
     @classmethod
-    def load_model_safe(cls, model_path: str, fallback_model_name: str = "cube"):
+    def load_model_safe(cls, model_path: str, fallback_model_name: str = "cube") -> str:
         """
-        Mencoba memuat model 3D eksternal via Ursina load_model().
-        Jika berkas ada dan valid, mengembalikan model tersebut.
-        Jika tidak ditemukan, mengembalikan model fallback primitif.
+        Memeriksa ketersediaan berkas model 3D eksternal.
+        Mengembalikan path string berkas jika berkas ada dan valid,
+        atau fallback_model_name primitif jika berkas tidak ditemukan.
         """
-        if model_path in cls._cache:
-            return cls._cache[model_path]
-
         cls._ensure_cache_dirs()
-
-        model = None
         if os.path.exists(model_path):
-            try:
-                model = load_model(model_path)
-            except Exception as e:
-                print(f"[AssetLoader] Peringatan: Gagal memuat {model_path} ({e}), menggunakan fallback.")
-                model = None
-
-        if model is None:
-            model = fallback_model_name
-
-        cls._cache[model_path] = model
-        return model
+            return model_path
+        return fallback_model_name
 
     @classmethod
-    def get_agv_model(cls):
+    def get_agv_model(cls) -> str:
         """Mengambil model robot AGV industri eksternal atau fallback."""
-        if cls._agv_model is None:
-            cls._agv_model = cls.load_model_safe(MODEL_PATH_AGV, fallback_model_name="cube")
-        return cls._agv_model
+        return cls.load_model_safe(MODEL_PATH_AGV, fallback_model_name="cube")
 
     @classmethod
-    def get_shelf_model(cls):
+    def get_shelf_model(cls) -> str:
         """Mengambil model rak palet bertingkat eksternal atau fallback."""
-        if cls._shelf_model is None:
-            cls._shelf_model = cls.load_model_safe(MODEL_PATH_SHELF, fallback_model_name="cube")
-        return cls._shelf_model
+        return cls.load_model_safe(MODEL_PATH_SHELF, fallback_model_name="cube")
 
     @classmethod
-    def get_cargo_model(cls):
+    def get_cargo_model(cls) -> str:
         """Mengambil model kotak kargo kontainer eksternal atau fallback."""
-        if cls._cargo_model is None:
-            cls._cargo_model = cls.load_model_safe(MODEL_PATH_CARGO, fallback_model_name="cube")
-        return cls._cargo_model
+        return cls.load_model_safe(MODEL_PATH_CARGO, fallback_model_name="cube")
 
     @classmethod
-    def get_dock_model(cls):
+    def get_dock_model(cls) -> str:
         """Mengambil model stasiun pengisian daya eksternal atau fallback."""
-        if cls._dock_model is None:
-            cls._dock_model = cls.load_model_safe(MODEL_PATH_DOCK, fallback_model_name="cube")
-        return cls._dock_model
+        return cls.load_model_safe(MODEL_PATH_DOCK, fallback_model_name="cube")
 
     @classmethod
-    def get_shelf_empty_model(cls):
+    def get_shelf_empty_model(cls) -> str:
+        """Mengambil model rak kosong eksternal atau fallback."""
         return cls.load_model_safe(MODEL_PATH_SHELF_EMPTY, fallback_model_name="cube")
-    
+
     @classmethod
-    def get_shelf_occupied_model(cls):
+    def get_shelf_occupied_model(cls) -> str:
+        """Mengambil model rak terisi kargo eksternal atau fallback."""
         return cls.load_model_safe(MODEL_PATH_SHELF_OCCUPIED, fallback_model_name="cube")
-    
+
     @classmethod
-    def get_agv_loaded_model(cls):
+    def get_agv_loaded_model(cls) -> str:
+        """Mengambil model robot AGV bermuatan kargo eksternal atau fallback."""
         return cls.load_model_safe(MODEL_PATH_AGV_LOADED, fallback_model_name="cube")

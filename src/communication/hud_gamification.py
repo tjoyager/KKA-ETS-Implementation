@@ -23,8 +23,8 @@ class GamificationHUD:
         # Root container unscaled (scale=Vec3(1,1,1)) - mencegah distorsi teks font
         self.container = Entity(parent=camera.ui, enabled=False)
 
-        self.side_w = 0.52
-        self.side_h = 0.34
+        self.side_w = 0.54
+        self.side_h = 0.35
 
         # 1. Panel banner atas bergaya arcade
         self.top_bg = Entity(
@@ -68,7 +68,7 @@ class GamificationHUD:
             parent=self.container,
             text="",
             position=Vec3(-0.76, 0.36, -0.01),
-            scale=0.60,
+            scale=0.62,
             color=color.white,
         )
 
@@ -108,7 +108,7 @@ class GamificationHUD:
         self.side_bg.scale = Vec3(self.side_w, self.side_h, 1)
         self.side_accent.position = Vec3(center_x, center_y + self.side_h / 2.0 - 0.003, -0.005)
         self.side_accent.scale = Vec3(self.side_w, 0.006, 1)
-        self.side_text.position = Vec3(center_x - self.side_w / 2.0 + 0.016, center_y + self.side_h / 2.0 - 0.020, -0.01)
+        self.side_text.position = Vec3(center_x - self.side_w / 2.0 + 0.014, center_y + self.side_h / 2.0 - 0.018, -0.01)
 
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan elemen HUD Gamifikasi."""
