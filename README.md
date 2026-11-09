@@ -1,6 +1,6 @@
 # Simulasi Robot Gudang 3D (Autonomous Warehouse AGV Simulator)
 > **Tugas / Proyek Kuliah Konsep Kecerdasan Artificial (KKA)**  
-> Simulator robot gudang otonom (*Automated Guided Vehicle* / AGV) skala **50x50** berbasis **Ursina Engine (Panda3D)** dengan arsitektur modular, interaktivitas penuh *Point-and-Click* (Raycasting), balapan dual-robot (**A\* Search vs Greedy Best-First Search**), dan antarmuka HUD ganda (*Industrial WMS vs Gamification*).
+> Simulator robot gudang otonom (*Automated Guided Vehicle* / AGV) skala **35x25** berbasis **Ursina Engine (Panda3D)** dengan arsitektur modular, interaktivitas penuh *Point-and-Click* (Raycasting), balapan dual-robot (**A\* Search vs Greedy Best-First Search**), rintangan dinding beton (*Wall Obstacles*) & jebakan *cul-de-sac*, serta antarmuka HUD ganda (*Industrial WMS vs Gamification*).
 
 ---
 
@@ -25,18 +25,19 @@ Codebase telah dioptimasi secara menyeluruh dari lapisan kognisi graf hingga sik
 
 ## 8 Fitur Utama yang Telah Diimplementasikan
 
-### 1. Skala Arena 50x50 & Generator Tata Letak Kompleks
-- Dimensi grid disesuaikan menjadi **50x50 sel** (2.500 sel).
+### 1. Skala Arena 35x25 & Generator Tata Letak Kompleks
+- Dimensi grid disesuaikan menjadi **panjang (X) = 35 dan lebar (Z) = 25 sel** (875 sel).
 - Generator denah gudang otomatis membangun struktur tata letak realistis:
-  - **Lorong Arteri Utama (*Cross Aisles*)**: Lebar 3 sel di $y = 10..12, 24..26, 38..40$ dan $x = 10..12, 24..26, 38..40$ untuk pergerakan bebas hambatan.
-  - **Blok Rak Palet Ganda (*Double-Deep Racks*)**: Ratusan rak berbaris memanjang dipisahkan lorong sempit (*narrow aisles*) selebar 2 sel.
-  - **Sekat Partisi Labirin (*Cul-de-Sacs*)**: Jebakan buntu proporsional yang secara teoritis memancing kelemahan GBFS ($f=h$) agar terbentur dinding, membuktikan keunggulan matematis A* ($f=g+h$).
+  - **Lorong Arteri Utama (*Cross Aisles*)**: Sumbu horizontal di $y = 7, 8$ dan $y = 16$, serta sumbu vertikal di $x = 11$ dan $x = 23$.
+  - **Blok Rak Palet Modular**: Blok rak terdistribusi rapi di 3 klaster horizontal dan vertikal.
+  - **Rintangan Dinding (*Wall Obstacles*) & Sekat Labirin (*Cul-de-Sacs*)**: Dinding beton terpisah dari rak (`CellType.WALL = 2`) yang dirancang strategis untuk partisi ruangan dan kantong buntu U-shape. Menjebak GBFS ($f=h$) yang terlalu *greedy* ke arah target, memperlihatkan perbedaan dramatis dengan rute optimal A* ($f=g+h$).
 
 ### 2. Titik Start Statis (Standby Dock Area)
 - Posisi *spawn* awal kedua robot terkunci secara absolut di pojok kiri bawah arena:
   - **AGV Alpha (A\* Search)**: Terkunci di Dock `(1, 1)`.
   - **AGV Beta (GBFS)**: Terkunci di Dock `(1, 3)`.
-- Dilengkapi platform pengisian daya 3D (*Charging Pad Platform*) dengan label penanda melayang.
+- Dilengkapi model 3D Docking Station dan teks penanda 3D melayang.
+- **Posisi Target Goal**: Terletak proporsional di seberang arena di pojok kanan atas `(32, 21)` dengan platform 3D hijau emerald dan teks penanda melayang.
 
 ### 3. Interaktivitas Raycasting (Point-and-Click)
 - **Bebas Dependensi Terminal**: Program tidak lagi meminta input teks melalui CLI; simulasi langsung membuka jendela 3D interaktif secara instan.
@@ -93,11 +94,11 @@ KKA-ETS-Implementation/
 │       └── README.md
 │
 ├── src/
-│   ├── config.py             # Konstanta global, koordinat grid 50x50, warna, & preset kamera
+│   ├── config.py             # Konstanta global, koordinat grid 35x25, warna, & preset kamera
 │   │
 │   ├── cognition/            # [KOGNISI] Logika Graf & Algoritma Pathfinding
 │   │   ├── heuristics.py     # Manhattan, Euclidean, Octile, Chebyshev
-│   │   ├── warehouse_graph.py# Graf grid 50x50, generator tata letak, & access nodes rak
+│   │   ├── warehouse_graph.py# Graf grid 35x25, generator tata letak, dinding, & access nodes rak
 │   │   └── pathfinding.py    # A* Search, GBFS, DualPathPlanner konkuren
 │   │
 │   ├── behavior/             # [BEHAVIOR] Kontrol Kinematika & Misi Robot
@@ -107,7 +108,7 @@ KKA-ETS-Implementation/
 │   ├── environment/          # [ENVIRONMENT] Pemandangan 3D & Aset
 │   │   ├── asset_loader.py   # Loader model eksternal aman dengan graceful fallback
 │   │   ├── interactive_shelf.py# Entitas rak 3D ber-Collider dengan deteksi klik & seleksi
-│   │   └── warehouse_scene.py# Konstruksi lantai 50x50, dinding, docking pad, pencahayaan
+│   │   └── warehouse_scene.py# Konstruksi lantai 35x25, balok dinding beton, docking & goal pad, pencahayaan
 │   │
 │   ├── communication/        # [KOMUNIKASI] Antarmuka Interaktif
 │   │   ├── interaction_system.py # Raycast mouse hover & state-machine klik
@@ -163,6 +164,6 @@ KKA-ETS-Implementation/
 | **`[V]`** | **`[Kamera: ...]`** | Mengganti sudut kamera: **Isometrik** $\rightarrow$ **Top-Down 2D** $\rightarrow$ **Follow Alpha** $\rightarrow$ **Follow Beta** $\rightarrow$ **Bebas (Free Orbit)**. |
 | **`[1]` / `[2]`** | - | Langsung mengunci kamera mengekor di belakang AGV Alpha / AGV Beta. |
 | **`[+]` / `[-]`** | **`[Cepat] / [Lambat]`** | Menambah atau memperlambat laju kecepatan simulasi. |
-| **Klik Kanan + Drag** | *(Mode Bebas)* | Mengorbit / memutar kamera bebas di sekeliling arena 50x50. |
+| **Klik Kanan + Drag** | *(Mode Bebas)* | Mengorbit / memutar kamera bebas di sekeliling arena 35x25. |
 | **Scroll Mouse** | - | *Zoom-in* / *Zoom-out* kamera. |
 | **`[Esc]`** | **`[Keluar]`** | Menutup simulator dengan aman. |

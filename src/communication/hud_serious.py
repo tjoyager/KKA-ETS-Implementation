@@ -112,7 +112,7 @@ class SeriousHUD:
         outcome_str = mission_mgr.overall_efficiency_winner if mission_mgr.race_finished else "Sedang Berlangsung..."
 
         new_text = (
-            f"=== WMS TELEMETRY DASHBOARD (50x50 ARENA) ===\n"
+            f"=== WMS TELEMETRY DASHBOARD (35x25 ARENA) ===\n"
             f"Mode HUD          : SERIOUS (INDUSTRIAL WMS) [Tekan 'M' Ganti Mode]\n"
             f"Status Operasi    : {interaction_sys.prompt_text}\n"
             f"Konsinyasi Kargo  : {pickup_info} -> Tujuan: {dropoff_info}\n"
