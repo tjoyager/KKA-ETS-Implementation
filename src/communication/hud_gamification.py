@@ -23,8 +23,8 @@ class GamificationHUD:
         # Root container unscaled (scale=Vec3(1,1,1)) - mencegah distorsi teks font
         self.container = Entity(parent=camera.ui, enabled=False)
 
-        self.side_w = 0.58
-        self.side_h = 0.40
+        self.side_w = 0.52
+        self.side_h = 0.34
 
         # 1. Panel banner atas bergaya arcade
         self.top_bg = Entity(
@@ -53,14 +53,14 @@ class GamificationHUD:
         self.side_bg = Entity(
             parent=self.container,
             model='quad',
-            position=Vec3(-0.48, 0.18, 0),
+            position=Vec3(-0.48, 0.20, 0),
             scale=Vec3(self.side_w, self.side_h, 1),
             color=color.rgba32(20, 16, 34, 225),
         )
         self.side_accent = Entity(
             parent=self.container,
             model='quad',
-            position=Vec3(-0.48, 0.18 + self.side_h / 2 - 0.003, -0.005),
+            position=Vec3(-0.48, 0.20 + self.side_h / 2 - 0.003, -0.005),
             scale=Vec3(self.side_w, 0.006, 1),
             color=color.rgb32(233, 30, 99),
         )
@@ -68,7 +68,7 @@ class GamificationHUD:
             parent=self.container,
             text="",
             position=Vec3(-0.76, 0.36, -0.01),
-            scale=0.68,
+            scale=0.60,
             color=color.white,
         )
 
@@ -102,7 +102,7 @@ class GamificationHUD:
         margin_x = 0.02
         screen_left = -aspect / 2.0
         center_x = screen_left + margin_x + (self.side_w / 2.0)
-        center_y = 0.18
+        center_y = 0.20
 
         self.side_bg.position = Vec3(center_x, center_y, 0)
         self.side_bg.scale = Vec3(self.side_w, self.side_h, 1)

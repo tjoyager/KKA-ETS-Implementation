@@ -305,47 +305,54 @@ class WarehouseScene(Entity):
 
     def _build_dock_stations(self):
         """Stasiun pengisian dock pojok kiri bawah dengan aksen neon bergradasi."""
-        dock_model = AssetLoader.get_dock_model()
+        dock_tower_model = AssetLoader.get_dock_model()
+        dock_pad_model = AssetLoader.load_model_safe("assets/models/dock.obj", "cube")
 
-        # Dock Alpha (A*) di (1, 1)
+        # Dock Alpha di (1, 1)
         pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
+        # 1. Pad lantai parkir pengisian daya robot Alpha
         Entity(
-            model='cube',
-            position=pos_a - Vec3(0, 0.02, 0),
-            scale=Vec3(1.5, 0.04, 1.5),
-            color=color.rgba32(0, 195, 255, 140),
+            model=dock_pad_model,
+            position=pos_a + Vec3(0, 0.02, 0),
+            scale=Vec3(0.95, 0.35, 0.95),
+            color=color.rgb32(0, 160, 220),
         )
+        # 2. Menara charger terminal di tepi dinding barat (belakang robot)
         Entity(
-            model=dock_model,
-            position=pos_a,
-            scale=Vec3(0.65, 0.65, 0.65),
+            model=dock_tower_model,
+            position=pos_a + Vec3(-0.95, 0, 0),
+            rotation=Vec3(0, 90, 0),
+            scale=Vec3(0.55, 0.65, 0.55),
         )
         Text(
-            text="DOCK ALPHA\n(A* Search)",
-            position=pos_a + Vec3(0, 1.8, 0),
-            scale=1.5,
+            text="CHARGER BAY 1\n[ALPHA DOCK]",
+            position=pos_a + Vec3(-0.95, 1.8, 0),
+            scale=1.2,
             color=color.rgb32(*COLOR_ALPHA_PRIMARY),
             billboard=True,
             origin=(0, 0),
         )
 
-        # Dock Beta (GBFS) di (1, 3)
+        # Dock Beta di (1, 3)
         pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.0)
+        # 1. Pad lantai parkir pengisian daya robot Beta
         Entity(
-            model='cube',
-            position=pos_b - Vec3(0, 0.02, 0),
-            scale=Vec3(1.5, 0.04, 1.5),
-            color=color.rgba32(255, 140, 0, 140),
+            model=dock_pad_model,
+            position=pos_b + Vec3(0, 0.02, 0),
+            scale=Vec3(0.95, 0.35, 0.95),
+            color=color.rgb32(230, 120, 0),
         )
+        # 2. Menara charger terminal di tepi dinding barat (belakang robot)
         Entity(
-            model=dock_model,
-            position=pos_b,
-            scale=Vec3(0.65, 0.65, 0.65),
+            model=dock_tower_model,
+            position=pos_b + Vec3(-0.95, 0, 0),
+            rotation=Vec3(0, 90, 0),
+            scale=Vec3(0.55, 0.65, 0.55),
         )
         Text(
-            text="DOCK BETA\n(GBFS)",
-            position=pos_b + Vec3(0, 1.8, 0),
-            scale=1.5,
+            text="CHARGER BAY 2\n[BETA DOCK]",
+            position=pos_b + Vec3(-0.95, 1.8, 0),
+            scale=1.2,
             color=color.rgb32(*COLOR_BETA_PRIMARY),
             billboard=True,
             origin=(0, 0),
@@ -378,6 +385,7 @@ class WarehouseScene(Entity):
             camera.position = Vec3(*cfg["pos"])
             camera.rotation = Vec3(90, 0, 0)
             camera.fov = cfg["fov"]
+            camera.rotation_z = 0.0
 
         elif mode in ("follow_alpha", "follow_beta"):
             cfg = CAMERA_PRESETS.get(mode, {"offset": (0.0, 14.0, -16.0), "fov": 55})

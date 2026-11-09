@@ -24,14 +24,14 @@ class SeriousHUD:
         # Root container unscaled (scale=Vec3(1,1,1)) - menjaga rasio aspek font 1:1 sempurna
         self.container = Entity(parent=camera.ui, enabled=True)
 
-        self.panel_w = 0.58
-        self.panel_h = 0.40
+        self.panel_w = 0.52
+        self.panel_h = 0.34
 
         # Panel dasar semi-transparan kompak dengan gaya cyber-industrial
         self.bg_panel = Entity(
             parent=self.container,
             model='quad',
-            position=Vec3(-0.48, 0.25, 0),
+            position=Vec3(-0.48, 0.30, 0),
             scale=Vec3(self.panel_w, self.panel_h, 1),
             color=color.rgba32(14, 18, 28, 225),
         )
@@ -40,7 +40,7 @@ class SeriousHUD:
         self.accent_line = Entity(
             parent=self.container,
             model='quad',
-            position=Vec3(-0.48, 0.25 + self.panel_h / 2 - 0.003, -0.005),
+            position=Vec3(-0.48, 0.30 + self.panel_h / 2 - 0.003, -0.005),
             scale=Vec3(self.panel_w, 0.006, 1),
             color=color.rgb32(0, 229, 255),
         )
@@ -49,8 +49,8 @@ class SeriousHUD:
         self.text_display = Text(
             parent=self.container,
             text="",
-            position=Vec3(-0.76, 0.43, -0.01),
-            scale=0.68,
+            position=Vec3(-0.76, 0.45, -0.01),
+            scale=0.60,
             color=color.white,
         )
 
@@ -72,7 +72,7 @@ class SeriousHUD:
         margin_x = 0.02
         screen_left = -aspect / 2.0
         center_x = screen_left + margin_x + (self.panel_w / 2.0)
-        center_y = 0.25
+        center_y = 0.30
 
         self.bg_panel.position = Vec3(center_x, center_y, 0)
         self.bg_panel.scale = Vec3(self.panel_w, self.panel_h, 1)
@@ -158,20 +158,20 @@ class SeriousHUD:
         h_formula = mission_mgr.current_heuristic_info.get("formula", "")
 
         new_text = (
-            f" [ WMS FLEET TELEMETRY ]                      ● ONLINE\n"
-            f" HEURISTIK: [ {h_name} ] (h = {h_formula})      [H] Ganti\n"
-            f" Misi: {pickup_info} -> {dropoff_info}\n"
-            f" --------------------------------------------------------\n"
-            f" METRIK SEARCH       | [CYAN] A* (Alpha)  | [AMBER] GBFS (Beta)\n"
-            f" --------------------------------------------------------\n"
-            f" Biaya Rute (Cost)   | {cost_a.ljust(18)} | {cost_b}\n"
-            f" Simpul Eksplorasi   | {nodes_a.ljust(18)} | {nodes_b}\n"
-            f" Waktu Komputasi     | {time_a.ljust(18)} | {time_b}\n"
-            f" Progres Langkah     | {steps_a.ljust(18)} | {steps_b}\n"
-            f" Status Robot        | {robot_a.state.value[:16].ljust(18)} | {robot_b.state.value[:16]}\n"
-            f" --------------------------------------------------------\n"
-            f" BOTTLENECK: {shared_count} sel ({cong_pct:.1f}%) | {risk_str}\n"
-            f" SPEED: {mission_mgr.current_speed:.1f}x [+/-] | STATUS: {outcome_str[:32]}"
+            f" [ WMS FLEET TELEMETRY ]               ● ONLINE\n"
+            f" HEURISTIK: [ {h_name} ]                [H] Ganti\n"
+            f" Misi: {pickup_info[:16]} -> {dropoff_info[:16]}\n"
+            f" -----------------------------------------------\n"
+            f" PARAMETER      | A* (Alpha)       | GBFS (Beta)\n"
+            f" -----------------------------------------------\n"
+            f" Biaya Rute     | {cost_a.ljust(16)} | {cost_b}\n"
+            f" Simpul Telusur | {nodes_a.ljust(16)} | {nodes_b}\n"
+            f" Waktu Komputasi| {time_a.ljust(16)} | {time_b}\n"
+            f" Progres Langkah| {steps_a.ljust(16)} | {steps_b}\n"
+            f" Status Robot   | {robot_a.state.value[:14].ljust(16)} | {robot_b.state.value[:14]}\n"
+            f" -----------------------------------------------\n"
+            f" BOTTLENECK: {shared_count} sel ({cong_pct:.1f}%) | {risk_str[:18]}\n"
+            f" SPEED: {mission_mgr.current_speed:.1f}x [+/-] | STATUS: {outcome_str[:22]}"
         )
 
         if new_text != self._last_rendered_text:

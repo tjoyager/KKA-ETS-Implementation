@@ -74,12 +74,12 @@ class AGVRobot(Entity):
         )
 
         self.is_beta = ("Beta" in name or "GBFS" in algorithm_label)
-        halo_radius = 3.0 if self.is_beta else 2.3
+        halo_radius = 1.40 if self.is_beta else 1.15
         beacon_y = 1.15 if self.is_beta else 0.95
         label_y = 3.4 if self.is_beta else 2.6
 
         # Elemen Visual Tambahan Robot
-        # 1. Cincin Halo Bercahaya di Lantai Bawah Robot (Ground Beacon)
+        # 1. Cincin Halo Bercahaya di Lantai Bawah Robot (Ground Underglow Neon)
         # Menjadikan kedua robot sangat mencolok dan membentuk cincin konsentris saat di sel yang sama
         self.ground_halo = Entity(
             parent=self,
@@ -179,6 +179,37 @@ class AGVRobot(Entity):
             self.trail_pool.append(marker)
         self.trail_active_count += 1
 
+    @staticmethod
+    def _compute_lane_offset(waypoints: List[Vec3], offset: float) -> List[Vec3]:
+        """
+        Menambahkan separasi lajur lateral tegak lurus arah lintasan (Lateral Lane Offset).
+        Mencegah kedua robot bertabrakan atau saling menumpuk/clipping saat melalui lorong yang sama.
+        """
+        n = len(waypoints)
+        if n < 2:
+            return list(waypoints)
+        out = []
+        for i in range(n):
+            if i == 0:
+                dx = waypoints[1].x - waypoints[0].x
+                dz = waypoints[1].z - waypoints[0].z
+            elif i == n - 1:
+                dx = waypoints[i].x - waypoints[i - 1].x
+                dz = waypoints[i].z - waypoints[i - 1].z
+            else:
+                dx = waypoints[i + 1].x - waypoints[i - 1].x
+                dz = waypoints[i + 1].z - waypoints[i - 1].z
+
+            length = math.hypot(dx, dz)
+            if length > 0.001:
+                nx = dz / length
+                nz = -dx / length
+            else:
+                nx, nz = 0.0, 0.0
+
+            out.append(Vec3(waypoints[i].x + nx * offset, waypoints[i].y, waypoints[i].z + nz * offset))
+        return out
+
     def set_mission_legs(
         self,
         leg1_path: List[Coord],
@@ -190,13 +221,19 @@ class AGVRobot(Entity):
         Memuat rute misi dua etape:
         - Leg 1: Dari posisi saat ini ke Pick-up Access Node
         - Leg 2: Dari Pick-up Access Node ke Drop-off Access Node
+        Menggunakan pemisahan lajur lateral (Dual-Lane AGV separation).
         """
         self.clear_trail()
         self.on_pickup_callback = on_pickup
         self.on_dropoff_callback = on_dropoff
 
-        self.leg1_waypoints = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
-        self.leg2_waypoints = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
+        raw_leg1 = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
+        raw_leg2 = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
+
+        # Offset lateral: AGV Alpha di lajur kanan (+0.18), AGV Beta di lajur kiri (-0.18)
+        offset = -0.18 if self.is_beta else 0.18
+        self.leg1_waypoints = self._compute_lane_offset(raw_leg1, offset)
+        self.leg2_waypoints = self._compute_lane_offset(raw_leg2, offset)
 
         self.total_mission_steps = len(leg1_path) + len(leg2_path)
         self.total_steps_executed = 0
@@ -213,9 +250,9 @@ class AGVRobot(Entity):
 
     def update(self):
         """Loop pergerakan per frame (dipanggil otomatis oleh Ursina)."""
-        # Efek denyut halus pada halo robot agar dinamis dan selalu terlihat
-        base_r = 3.0 if self.is_beta else 2.3
-        pulse = base_r + math.sin(time.time() * 5.0) * 0.15
+        # Efek denyut halus pada underglow neon robot agar dinamis dan selalu terlihat
+        base_r = 1.40 if self.is_beta else 1.15
+        pulse = base_r + math.sin(time.time() * 5.0) * 0.08
         self.ground_halo.scale_x = pulse
         self.ground_halo.scale_z = pulse
 
