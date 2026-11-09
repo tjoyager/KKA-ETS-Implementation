@@ -323,10 +323,12 @@ class UIController:
         elif key in ('-', 'down arrow'):
             self.adjust_speed(-1.5)
         elif key == '1':
-            self.scene.apply_camera_mode("follow_alpha")
-            self.btn_cam.text = "Kamera: Follow Alpha [V]"
+            self.scene.apply_camera_mode("follow_alpha", target_robot_pos=self.mission_mgr.robot_alpha.position)
+            self.scene.cam_mode_idx = self.scene.cam_modes.index("follow_alpha")
+            self.btn_cam.text = "[V] Alpha"
         elif key == '2':
-            self.scene.apply_camera_mode("follow_beta")
-            self.btn_cam.text = "Kamera: Follow Beta [V]"
+            self.scene.apply_camera_mode("follow_beta", target_robot_pos=self.mission_mgr.robot_beta.position)
+            self.scene.cam_mode_idx = self.scene.cam_modes.index("follow_beta")
+            self.btn_cam.text = "[V] Beta"
         elif key == 'escape':
             application.quit()

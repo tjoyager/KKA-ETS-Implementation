@@ -73,14 +73,19 @@ class AGVRobot(Entity):
             **kwargs,
         )
 
+        self.is_beta = ("Beta" in name or "GBFS" in algorithm_label)
+        halo_radius = 3.0 if self.is_beta else 2.3
+        beacon_y = 1.15 if self.is_beta else 0.95
+        label_y = 3.4 if self.is_beta else 2.6
+
         # Elemen Visual Tambahan Robot
         # 1. Cincin Halo Bercahaya di Lantai Bawah Robot (Ground Beacon)
-        # Menjadikan kedua robot sangat mencolok dan kontras dari ketinggian kamera mana pun
+        # Menjadikan kedua robot sangat mencolok dan membentuk cincin konsentris saat di sel yang sama
         self.ground_halo = Entity(
             parent=self,
             model=Cylinder(resolution=24),
-            scale=Vec3(2.6, 0.08, 2.6),
-            position=Vec3(0, 0.06, 0),
+            scale=Vec3(halo_radius, 0.08, halo_radius),
+            position=Vec3(0, 0.06 if not self.is_beta else 0.08, 0),
             color=self.primary_col,
         )
 
@@ -89,7 +94,7 @@ class AGVRobot(Entity):
             parent=self,
             model='sphere',
             scale=Vec3(0.28, 0.28, 0.28),
-            position=Vec3(0, 0.95, 0),
+            position=Vec3(0, beacon_y, 0),
             color=self.primary_col,
         )
 
@@ -106,11 +111,11 @@ class AGVRobot(Entity):
             enabled=False,
         )
 
-        # 5. Label Billboard melayang di atas robot
+        # 5. Label Billboard melayang di atas robot (ketinggian bertingkat anti Z-fighting)
         self.label_tag = Text(
             parent=self,
             text=f"{name}\n[{algorithm_label}]",
-            position=Vec3(0, 2.6, 0),
+            position=Vec3(0, label_y, 0),
             scale=1.8,
             color=self.primary_col,
             billboard=True,
@@ -209,7 +214,8 @@ class AGVRobot(Entity):
     def update(self):
         """Loop pergerakan per frame (dipanggil otomatis oleh Ursina)."""
         # Efek denyut halus pada halo robot agar dinamis dan selalu terlihat
-        pulse = 2.6 + math.sin(time.time() * 5.0) * 0.15
+        base_r = 3.0 if self.is_beta else 2.3
+        pulse = base_r + math.sin(time.time() * 5.0) * 0.15
         self.ground_halo.scale_x = pulse
         self.ground_halo.scale_z = pulse
 
