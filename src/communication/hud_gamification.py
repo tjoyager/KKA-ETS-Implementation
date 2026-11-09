@@ -20,39 +20,58 @@ class GamificationHUD:
     """
 
     def __init__(self):
-        # Panel atas bergaya arcade
-        self.top_banner = Entity(
-            parent=camera.ui,
-            model='quad',
-            position=Vec3(0, 0.40, 0),
-            scale=Vec3(0.96, 0.14, 1),
-            color=color.rgba32(20, 15, 35, 235),
-            enabled=False,
-        )
+        # Root container unscaled (scale=Vec3(1,1,1)) - mencegah distorsi teks font
+        self.container = Entity(parent=camera.ui, enabled=False)
 
+        # 1. Panel banner atas bergaya arcade
+        top_pos = Vec3(0, 0.435, 0)
+        top_w = 0.98
+        top_h = 0.088
+        self.top_bg = Entity(
+            parent=self.container,
+            model='quad',
+            position=top_pos,
+            scale=Vec3(top_w, top_h, 1),
+            color=color.rgba32(18, 14, 30, 235),
+        )
+        Entity(
+            parent=self.container,
+            model='quad',
+            position=top_pos + Vec3(0, top_h / 2 - 0.003, -0.005),
+            scale=Vec3(top_w, 0.006, 1),
+            color=color.rgb32(255, 215, 0),
+        )
         self.top_text = Text(
-            parent=self.top_banner,
+            parent=self.container,
             text="",
-            position=Vec3(-0.48, 0.35, -0.01),
-            scale=1.1,
-            color=color.rgb32(255, 230, 0),
+            position=Vec3(-0.47, 0.468, -0.01),
+            scale=0.74,
+            color=color.rgb32(255, 230, 40),
         )
 
-        # Panel samping kiri untuk papan skor & rincian balapan
-        self.side_panel = Entity(
-            parent=camera.ui,
+        # 2. Panel samping kiri untuk papan skor & rincian balapan
+        side_pos = Vec3(-0.52, 0.16, 0)
+        side_w = 0.66
+        side_h = 0.42
+        self.side_bg = Entity(
+            parent=self.container,
             model='quad',
-            position=Vec3(-0.52, 0.16, 0),
-            scale=Vec3(0.68, 0.32, 1),
-            color=color.rgba32(22, 18, 38, 230),
-            enabled=False,
+            position=side_pos,
+            scale=Vec3(side_w, side_h, 1),
+            color=color.rgba32(20, 16, 34, 225),
         )
-
+        Entity(
+            parent=self.container,
+            model='quad',
+            position=side_pos + Vec3(0, side_h / 2 - 0.003, -0.005),
+            scale=Vec3(side_w, 0.006, 1),
+            color=color.rgb32(233, 30, 99),
+        )
         self.side_text = Text(
-            parent=self.side_panel,
+            parent=self.container,
             text="",
-            position=Vec3(-0.46, 0.42, -0.01),
-            scale=0.95,
+            position=Vec3(-0.83, 0.35, -0.01),
+            scale=0.72,
             color=color.white,
         )
 
@@ -62,15 +81,14 @@ class GamificationHUD:
 
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan elemen HUD Gamifikasi."""
-        self.top_banner.enabled = visible
-        self.side_panel.enabled = visible
+        self.container.enabled = visible
         if visible:
             self._last_top_text = ""
             self._last_side_text = ""
 
     def update(self, mission_mgr: MissionManager, interaction_sys: InteractionSystem):
         """Memperbarui visual skor, bintang, dan waktu balapan dengan dirty-checking dan rate-limiting."""
-        if not self.top_banner.enabled:
+        if not self.container.enabled:
             return
 
         now = time.perf_counter()

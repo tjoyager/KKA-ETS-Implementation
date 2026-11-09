@@ -21,30 +21,37 @@ class SeriousHUD:
     """
 
     def __init__(self):
+        # Root container unscaled (scale=Vec3(1,1,1)) - menjaga rasio aspek font 1:1 sempurna
+        self.container = Entity(parent=camera.ui, enabled=True)
+
+        panel_pos = Vec3(-0.52, 0.22, 0)
+        panel_w = 0.66
+        panel_h = 0.42
+
         # Panel dasar semi-transparan kompak dengan gaya cyber-industrial
-        self.panel = Entity(
-            parent=camera.ui,
+        self.bg_panel = Entity(
+            parent=self.container,
             model='quad',
-            position=Vec3(-0.54, 0.28, 0),
-            scale=Vec3(0.68, 0.38, 1),
-            color=color.rgba32(14, 18, 28, 220),
-            enabled=True,
+            position=panel_pos,
+            scale=Vec3(panel_w, panel_h, 1),
+            color=color.rgba32(14, 18, 28, 225),
         )
 
         # Garis aksen cyan di bagian atas panel
         Entity(
-            parent=self.panel,
+            parent=self.container,
             model='quad',
-            position=Vec3(0, 0.495, -0.01),
-            scale=Vec3(1.0, 0.014, 1),
+            position=panel_pos + Vec3(0, panel_h / 2 - 0.003, -0.005),
+            scale=Vec3(panel_w, 0.006, 1),
             color=color.rgb32(0, 229, 255),
         )
 
+        # Teks telemetri WMS unscaled (tidak gepeng/squished)
         self.text_display = Text(
-            parent=self.panel,
+            parent=self.container,
             text="",
-            position=Vec3(-0.48, 0.46, -0.01),
-            scale=0.76,
+            position=panel_pos + Vec3(-panel_w / 2 + 0.02, panel_h / 2 - 0.02, -0.01),
+            scale=0.72,
             color=color.white,
         )
 
@@ -53,13 +60,13 @@ class SeriousHUD:
 
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan panel HUD Serious."""
-        self.panel.enabled = visible
+        self.container.enabled = visible
         if visible:
             self._last_rendered_text = ""  # Force refresh saat dibuka kembali
 
     def update(self, mission_mgr: MissionManager, interaction_sys: InteractionSystem):
         """Memperbarui teks metrik telemetri secara efisien dengan dirty-checking dan rate-limiting."""
-        if not self.panel.enabled:
+        if not self.container.enabled:
             return
 
         now = time.perf_counter()
