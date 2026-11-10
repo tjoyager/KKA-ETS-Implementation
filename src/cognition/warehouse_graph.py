@@ -378,7 +378,7 @@ class WarehouseGraph100:
         if DEFAULT_GOAL in wh.shelves:
             del wh.shelves[DEFAULT_GOAL]
 
-        # 6. Hitung Access Nodes untuk semua rak yang valid
+        # 5. Hitung Access Nodes untuk semua rak yang valid
         for coord, shelf in list(wh.shelves.items()):
             shelf.access_nodes = wh.compute_access_nodes(coord)
 

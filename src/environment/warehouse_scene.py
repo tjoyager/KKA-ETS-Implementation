@@ -41,6 +41,7 @@ from src.config import (
     WALL_HEIGHT,
     PERIMETER_WALL_HEIGHT,
     CAMERA_PRESETS,
+    MODEL_PATH_WALL,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100, CellType, ShelfData
 from src.environment.asset_loader import AssetLoader
@@ -209,35 +210,28 @@ class WarehouseScene(Entity):
         # TAHAP 4: SPAWN RINTANGAN DINDING (WALL OBSTACLES) & PERIMETER
         # =====================================================================
         self._update_progress("Membangun Dinding Luar & Sekat Partisi Labirin...", 0.82)
-        self.static_walls_parent = Entity()
+        self.static_walls_parent = Entity(color=color.rgb32(75, 45, 45))
 
         # 1. Empat Dinding Pembatas Luar Arena (Perimeter Walls)
         arena_w = GRID_WIDTH + 2
         arena_h = GRID_HEIGHT + 2
-        wall_h = PERIMETER_WALL_HEIGHT
+        wall_h = 2.4
         wall_t = 0.5
-        col_perim = color.rgb32(*COLOR_PERIMETER_WALL)
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
 
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h), color=col_perim)
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h), color=col_perim)
-
-        # 2. Rintangan Dinding Internal (Wall Obstacles & Sekat Cul-de-Sac)
-        # Menggunakan balok cube abu-abu beton kontras dan tinggi 2.0 (lebih tinggi dari rak ~1.0)
-        col_wall = color.rgb32(*COLOR_WALL)
-        internal_wall_h = WALL_HEIGHT
-
+        # Sekat Partisi Labirin
         for y in range(self.graph.height):
             for x in range(self.graph.width):
                 if self.graph.grid[y, x] == CellType.WALL:
-                    pos = grid_to_world(x, y, internal_wall_h / 2.0)
+                    pos = grid_to_world(x, y, 1.0)
                     Entity(
                         parent=self.static_walls_parent,
                         model='cube',
                         position=pos,
-                        scale=Vec3(0.98, internal_wall_h, 0.98),
-                        color=col_wall,
+                        scale=Vec3(0.98, 2.0, 0.98),
                     )
 
         self._update_progress("Menggabungkan Mesh Dinding (Combining Walls)...", 0.90)
