@@ -1,5 +1,5 @@
 """
-Paket Kognisi (Cognition): Graf Gudang 50x50, Heuristik, dan Algoritma Pathfinding.
+Paket Kognisi (Cognition): Graf Gudang 35x25, Heuristik, dan Algoritma Pathfinding.
 """
 
 from .heuristics import (
@@ -11,6 +11,7 @@ from .heuristics import (
 from .warehouse_graph import (
     WarehouseGraph100,
     WarehouseGraph50,
+    WarehouseGraph35,
     WarehouseGraph,
     CellType,
     ShelfData,
@@ -31,6 +32,7 @@ __all__ = [
     "chebyshev_distance",
     "WarehouseGraph100",
     "WarehouseGraph50",
+    "WarehouseGraph35",
     "WarehouseGraph",
     "CellType",
     "ShelfData",

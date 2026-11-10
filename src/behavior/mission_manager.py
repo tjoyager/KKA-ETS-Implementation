@@ -27,7 +27,7 @@ Coord = Tuple[int, int]
 
 class MissionManager:
     """
-    Koordinator sentral balapan dua robot AGV di gudang 50x50.
+    Koordinator sentral balapan dua robot AGV di gudang 35x25.
     """
 
     def __init__(

@@ -2,7 +2,7 @@
 pathfinding.py
 ==============
 Implementasi algoritma Informed Search (A* Search vs Greedy Best-First Search)
-dan perencana rute konkuren untuk simulasi balapan dual-robot di grid 50x50.
+dan perencana rute konkuren untuk simulasi balapan dual-robot di grid 35x25.
 """
 
 import heapq
@@ -87,7 +87,7 @@ def a_star_search(
     allow_diagonal: bool = False,
 ) -> SearchResult:
     """
-    Implementasi A* Search pada grid graf 50x50 teroptimasi tinggi.
+    Implementasi A* Search pada grid graf 35x25 teroptimasi tinggi.
     Fungsi evaluasi f(n) = g(n) + h(n) dengan prioritas tie-breaking h(n) terkecil.
     Menjamin rute terpendek dan optimal secara matematis dengan waktu komputasi sub-milidetik.
     """
@@ -192,7 +192,7 @@ def greedy_best_first_search(
     allow_diagonal: bool = False,
 ) -> SearchResult:
     """
-    Implementasi Greedy Best-First Search (GBFS) pada grid graf 50x50 teroptimasi.
+    Implementasi Greedy Best-First Search (GBFS) pada grid graf 35x25 teroptimasi.
     Fungsi evaluasi f(n) = h(n).
     Mengeksplorasi simpul dengan rakus ke arah target; cepat namun rentan suboptimal.
     """

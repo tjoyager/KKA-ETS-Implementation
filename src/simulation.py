@@ -19,6 +19,10 @@ from src.config import (
     COLOR_BETA_PRIMARY,
     COLOR_BETA_TRAIL,
     DEFAULT_ROBOT_SPEED,
+    ALPHA_TRAIL_OFFSET_X,
+    ALPHA_TRAIL_OFFSET_Y,
+    BETA_TRAIL_OFFSET_X,
+    BETA_TRAIL_OFFSET_Y,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100
 from src.environment.warehouse_scene import WarehouseScene
@@ -34,7 +38,7 @@ def run_warehouse_simulation():
     """
     # 1. Inisialisasi Aplikasi Jendela Ursina
     app = Ursina(
-        title="Simulasi Robot Gudang 3D - Dual-AGV Racing (50x50)",
+        title="Simulasi Robot Gudang 3D - Dual-AGV Racing (35x25)",
         borderless=False,
         fullscreen=False,
         size=(1280, 720),
@@ -42,7 +46,7 @@ def run_warehouse_simulation():
     window.fps_counter.enabled = True
     window.exit_button.visible = False
 
-    # 2. Bangun Graf Gudang Kompleks 50x50
+    # 2. Bangun Graf Gudang Kompleks 35x25
     graph = WarehouseGraph100.generate_complex_warehouse()
 
     # Variabel state aplikasi
@@ -62,6 +66,9 @@ def run_warehouse_simulation():
             primary_color_rgb=COLOR_ALPHA_PRIMARY,
             trail_color_rgb=COLOR_ALPHA_TRAIL,
             speed=DEFAULT_ROBOT_SPEED,
+            is_alpha=True,
+            trail_offset_x=ALPHA_TRAIL_OFFSET_X,
+            trail_offset_y=ALPHA_TRAIL_OFFSET_Y,
         )
 
         robot_beta = AGVRobot(
@@ -71,6 +78,9 @@ def run_warehouse_simulation():
             primary_color_rgb=COLOR_BETA_PRIMARY,
             trail_color_rgb=COLOR_BETA_TRAIL,
             speed=DEFAULT_ROBOT_SPEED,
+            is_alpha=False,
+            trail_offset_x=BETA_TRAIL_OFFSET_X,
+            trail_offset_y=BETA_TRAIL_OFFSET_Y,
         )
 
         # 4. Inisialisasi Manajer Misi & Interaksi Raycast
@@ -95,12 +105,16 @@ def run_warehouse_simulation():
         app_state["ready"] = True
 
         print("\n" + "=" * 70)
-        print("SIMULATOR GUDANG 3D 50x50 BERHASIL DIMUAT LENGKAP!")
-        print("Optimasi Performa Ekstrem Aktif:")
-        print("  - [Floor Tiling]       : 1 Single-Plane Raksasa (Shader Texture Tiling 50x50)")
+        print("SIMULATOR GUDANG 3D 35x25 BERHASIL DIMUAT LENGKAP!")
+        print("Fitur Peta & Optimasi Performa Aktif:")
+        print("  - [Grid & Map Layout]  : Skala 35x25 dengan Docking Station & Target Goal")
+        print("  - [Wall Obstacles]     : Rintangan Dinding Beton & Cul-de-Sac Traps (Jebakan GBFS)")
+        print("  - [Floor Tiling]       : 1 Single-Plane Raksasa (Shader Texture Tiling 35x25)")
         print("  - [Static Combine]     : Ratusan Rak & Dinding dilebur ke Single Mesh (Zero Draw-Call)")
-        print("  - [Graph Precompute]   : Pra-kalkulasi tabel ketetanggaan graf (Pathfinding 10x lebih cepat)")
-        print("  - [A* Tie-Breaking]    : Prioritas h(n) terkecil pada f(n) setara (93% simpul terpangkas)")
+        print("  - [Visual Offset Split]: Offset lateral lokal 3D model & jejak split mencegah Z-fighting")
+        print("  - [Graph Precompute]   : Pra-kalkulasi tabel ketetanggaan graf (Pathfinding ultra-cepat)")
+        print("  - [A* Tie-Breaking]    : Prioritas h(n) terkecil pada f(n) setara (Memangkas simpul)")
+        print("  - [Kamera Adaptif]     : Posisi isometrik & topdown mencakup seluruh area 35x25")
         print("  - [Singleton Marker]   : 3 Indikator global untuk 608 rak (Hemat 1.200+ scene entities)")
         print("  - [Trail Pool]         : Entity Pooling daur-ulang jejak robot (Zero GC allocations)")
         print("  - [HUD Dirty-Check]    : Rate-limiting 20 Hz (Pangkas 85% render font mesh micro-stutter)")

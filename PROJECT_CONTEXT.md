@@ -77,11 +77,11 @@ ursina>=6.0.0
 
 ## 4. Key Module Overview (Optimasi Keseluruhan Sistem)
 
-1. `src/config.py`: Definisi parameter grid 50x50, titik spawn statis (1, 1) & (1, 3), palet warna, dan path model.
-2. `src/cognition/warehouse_graph.py`: Generator layout gudang 50x50 kompleks dengan pra-kalkulasi tabel ketetanggaan (`precompute_adjacency`) untuk lookup rute ultra-cepat.
+1. `src/config.py`: Definisi parameter grid 35x25, titik docking Start (1, 1) & (1, 3), titik Goal (32, 21), palet warna (dinding beton & rak), dan path model.
+2. `src/cognition/warehouse_graph.py`: Generator layout gudang 35x25 kompleks dengan rintangan dinding (Wall Obstacles) & cul-de-sac traps, serta pra-kalkulasi tabel ketetanggaan (`precompute_adjacency`) untuk lookup rute ultra-cepat.
 3. `src/cognition/pathfinding.py`: Implementasi A* Search dengan prioritas tie-breaking $h(n)$ terkecil (memangkas 93% simpul tak perlu & sub-milidetik), Greedy Best-First Search, dan `DualPathPlanner` untuk balapan dual-robot simultan.
-4. `src/environment/interactive_shelf.py`: Entitas rak 3D ber-Collider dengan Singleton Selection Indicators (3 indikator global untuk 608 rak, menghemat 1.200+ entities) dan zero-collider kargo.
-5. `src/environment/warehouse_scene.py`: Konstruksi lingkungan 3D teroptimasi ekstrem: Floor Texture Tiling (1 single-plane 50x50), Static Mesh Combining (melebur ratusan rak & dinding ke single mesh), dan Asynchronous Loading Generator dengan Loading Screen.
+4. `src/environment/interactive_shelf.py`: Entitas rak 3D ber-Collider dengan Singleton Selection Indicators dan zero-collider kargo.
+5. `src/environment/warehouse_scene.py`: Konstruksi lingkungan 3D teroptimasi ekstrem: Floor Texture Tiling (1 single-plane 35x25), Static Mesh Combining (melebur balok dinding beton abu-abu kontras & rak ke single mesh), Docking & Goal Stations, preset kamera adaptif, dan Asynchronous Loading Generator dengan Loading Screen.
 6. `src/environment/asset_loader.py`: Pemuatan model `.obj` eksternal di `assets/models/` dengan graceful procedural fallback dan model reference direct caching.
 7. `src/behavior/robot_controller.py`: AGV Controller dengan rotasi halus lerp, lidar scanner, kargo dek, dan Zero-Allocation Trail Entity Pooling (bebas GC stutter).
 8. `src/behavior/mission_manager.py`: Sinkronisasi balapan dua robot (A* vs GBFS), stopwatch, penghitung skor efisiensi, dan rating bintang.

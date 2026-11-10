@@ -5,7 +5,7 @@ File eksekusi utama untuk Simulator Robot Gudang 3D Otonom (Autonomous Warehouse
 Menerapkan arsitektur modular terkini: Kognisi, Behavior, Environment, dan Komunikasi.
 
 Fitur Unggulan:
-- Skala Arena 50x50 dengan generator tata letak gudang kompleks dan realistis.
+- Skala Arena 35x25 dengan generator tata letak gudang kompleks, rintangan dinding beton, dan jebakan cul-de-sac.
 - Bebas dependensi terminal (langsung membuka visualisasi 3D interaktif).
 - Interaktivitas penuh Point-and-Click (Raycasting): Klik kargo (Pick-up) & rak kosong (Drop-off).
 - Entitas rak dinamis sebagai target node dengan titik akses (access nodes) terdekat.
