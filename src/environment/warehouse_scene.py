@@ -34,6 +34,7 @@ from src.config import (
     COLOR_BETA_PRIMARY,
     COLOR_SHELF_FRAME,
     CAMERA_PRESETS,
+    MODEL_PATH_WALL,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100, CellType, ShelfData
 from src.environment.asset_loader import AssetLoader
@@ -204,29 +205,79 @@ class WarehouseScene(Entity):
         # TAHAP 4: SPAWN DINDING & COMBINE STATIS
         # =====================================================================
         self._update_progress("Membangun Dinding Luar & Sekat Partisi Labirin...", 0.82)
-        self.static_walls_parent = Entity(color=color.rgb32(75, 45, 45))
+        wall_model = AssetLoader.get_wall_model()
+        is_custom_wall = (wall_model != 'cube')
+
+        self.static_walls_parent = Entity()
 
         # 4 Dinding Pembatas Luar
         arena_w = GRID_WIDTH + 2
         arena_h = GRID_HEIGHT + 2
-        wall_h = 2.4
+        wall_h = 2.55 if is_custom_wall else 2.4
         wall_t = 0.5
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
 
-        # Sekat Partisi Labirin
+        if is_custom_wall:
+            # wall.obj memiliki dimensi asli: Lebar X = 3.42, Tinggi Y = 2.55, Tebal Z = 0.27
+            # dan pivot dasar Y=0 di lantai.
+            # Susun segmen modular berulang di sepanjang ke-4 perimeter arena (52x52)
+            import numpy as np
+            half_w = arena_w / 2.0  # 26.0
+            half_h = arena_h / 2.0  # 26.0
+            wall_len = 3.42
+            num_segs_w = int(np.ceil(arena_w / wall_len))  # 16 segmen
+            num_segs_h = int(np.ceil(arena_h / wall_len))  # 16 segmen
+
+            xs = np.linspace(-half_w + wall_len / 2.0, half_w - wall_len / 2.0, num_segs_w)
+            zs = np.linspace(-half_h + wall_len / 2.0, half_h - wall_len / 2.0, num_segs_h)
+
+            # Dinding Sisi Utara & Selatan (berjejer sepanjang sumbu X)
+            for x_pos in xs:
+                Entity(parent=self.static_walls_parent, model=wall_model, position=Vec3(x_pos, 0, half_h), scale=Vec3(1, 1, 1), rotation_y=0)
+                Entity(parent=self.static_walls_parent, model=wall_model, position=Vec3(x_pos, 0, -half_h), scale=Vec3(1, 1, 1), rotation_y=180)
+
+            # Dinding Sisi Timur & Barat (berjejer sepanjang sumbu Z)
+            for z_pos in zs:
+                Entity(parent=self.static_walls_parent, model=wall_model, position=Vec3(half_w, 0, z_pos), scale=Vec3(1, 1, 1), rotation_y=90)
+                Entity(parent=self.static_walls_parent, model=wall_model, position=Vec3(-half_w, 0, z_pos), scale=Vec3(1, 1, 1), rotation_y=-90)
+        else:
+            self.static_walls_parent.color = color.rgb32(75, 45, 45)
+            Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
+            Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
+            Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
+            Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
+
+        # Sekat Partisi Labirin Internal
+        wall_cells = set()
         for y in range(self.graph.height):
             for x in range(self.graph.width):
                 if self.graph.grid[y, x] == CellType.WALL:
-                    pos = grid_to_world(x, y, 1.0)
-                    Entity(
-                        parent=self.static_walls_parent,
-                        model='cube',
-                        position=pos,
-                        scale=Vec3(0.98, 2.0, 0.98),
-                    )
+                    wall_cells.add((x, y))
+
+        for x, y in wall_cells:
+            if is_custom_wall:
+                pos = grid_to_world(x, y, 0.0)
+                # Tentukan orientasi dinding berdasarkan sel tetangga vertikal/horizontal
+                has_vertical = (x, y + 1) in wall_cells or (x, y - 1) in wall_cells
+                has_horizontal = (x + 1, y) in wall_cells or (x - 1, y) in wall_cells
+
+                rot_y = 90 if (has_vertical and not has_horizontal) else 0
+                scale_vec = Vec3(1.0 / 3.42, 1.0, 1.0)
+
+                Entity(
+                    parent=self.static_walls_parent,
+                    model=wall_model,
+                    position=pos,
+                    scale=scale_vec,
+                    rotation_y=rot_y,
+                )
+            else:
+                pos = grid_to_world(x, y, 1.0)
+                Entity(
+                    parent=self.static_walls_parent,
+                    model='cube',
+                    position=pos,
+                    scale=Vec3(0.98, 2.0, 0.98),
+                )
 
         self._update_progress("Menggabungkan Mesh Dinding (Combining Walls)...", 0.90)
         yield

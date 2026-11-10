@@ -18,6 +18,7 @@ from src.config import (
     MODEL_PATH_SHELF_OCCUPIED,
     MODEL_PATH_CARGO,
     MODEL_PATH_DOCK,
+    MODEL_PATH_WALL,
 )
 
 
@@ -104,3 +105,8 @@ class AssetLoader:
     @classmethod
     def get_agv_loaded_model(cls):
         return cls.load_model_safe(MODEL_PATH_AGV_LOADED, fallback_model_name="cube")
+
+    @classmethod
+    def get_wall_model(cls):
+        """Mengambil model dinding partisi/pembatas eksternal atau fallback."""
+        return cls.load_model_safe(MODEL_PATH_WALL, fallback_model_name="cube")

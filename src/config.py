@@ -86,6 +86,7 @@ MODEL_PATH_SHELF_OCCUPIED = "assets/models/occupied-shelf.obj"
 MODEL_PATH_DOCK = "assets/models/docking-station.obj"
 MODEL_PATH_SHELF = "assets/models/empty-shelf.obj"
 MODEL_PATH_CARGO = "assets/models/cargo.obj"
+MODEL_PATH_WALL = "assets/models/wall.obj"
 
 # ============================================================================
 # PRESET KAMERA ARENA 50x50

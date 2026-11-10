@@ -356,6 +356,72 @@ class WarehouseGraph100:
             if (x, 37) in wh.shelves:
                 del wh.shelves[(x, 37)]
 
+        # 4b. Dinding Partisi Tambahan Acak di Sekitar Rak (Random Warehouse Obstacles)
+        # Mengumpulkan kandidat posisi sel kosong di sekitar rak tanpa memutus konektivitas graf
+        random_gen = random.Random(42)
+        candidate_wall_cells = []
+        for (sx, sy) in list(wh.shelves.keys()):
+            for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                nx, ny = sx + dx, sy + dy
+                if 2 <= nx < wh.width - 2 and 2 <= ny < wh.height - 2:
+                    if (
+                        wh.grid[ny, nx] == CellType.EMPTY
+                        and (nx > 5 or ny > 5)  # Jangan letakkan di standby/docking zone
+                        and (nx, ny) not in artery_cells  # Pertahankan arteri utama tetap lancar
+                        and (nx, ny) != SPAWN_ALPHA
+                        and (nx, ny) != SPAWN_BETA
+                    ):
+                        candidate_wall_cells.append((nx, ny))
+
+        candidate_wall_cells = list(set(candidate_wall_cells))
+        random_gen.shuffle(candidate_wall_cells)
+
+        # Helper untuk validasi keterjangkauan dan akses rak
+        def _check_connectivity_and_shelf_access() -> bool:
+            from collections import deque
+            q = deque([SPAWN_ALPHA])
+            visited = {SPAWN_ALPHA}
+            while q:
+                cx, cy = q.popleft()
+                for nx, ny in wh.get_neighbors(cx, cy):
+                    if (nx, ny) not in visited:
+                        visited.add((nx, ny))
+                        q.append((nx, ny))
+            total_empty = sum(
+                1 for gy in range(wh.height) for gx in range(wh.width)
+                if wh.grid[gy, gx] == CellType.EMPTY
+            )
+            if len(visited) != total_empty:
+                return False
+
+            # Pastikan semua rak (kecuali jebakan labirin) tetap memiliki minimal 1 titik akses kosong
+            for coord, sdata in wh.shelves.items():
+                if coord in ((28, 36), (29, 36)):  # Trap labirin yang sengaja terisolasi
+                    continue
+                sx, sy = coord
+                has_access = any(
+                    0 <= sx + dx < wh.width and 0 <= sy + dy < wh.height
+                    and wh.grid[sy + dy, sx + dx] == CellType.EMPTY
+                    for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0))
+                )
+                if not has_access:
+                    return False
+            return True
+
+        target_random_walls = 35
+        walls_added = 0
+        for wx, wy in candidate_wall_cells:
+            if walls_added >= target_random_walls:
+                break
+            wh.set_cell(wx, wy, CellType.WALL)
+            wh.precompute_adjacency()
+            if _check_connectivity_and_shelf_access():
+                walls_added += 1
+            else:
+                wh.set_cell(wx, wy, CellType.EMPTY)
+
+        wh.precompute_adjacency()
+
         # 5. Hitung Access Nodes untuk semua rak yang valid
         for coord, shelf in list(wh.shelves.items()):
             shelf.access_nodes = wh.compute_access_nodes(coord)
