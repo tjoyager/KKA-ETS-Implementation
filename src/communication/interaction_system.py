@@ -57,6 +57,11 @@ class InteractionSystem:
             if self.hovered_shelf:
                 self.hovered_shelf.set_hover(True)
 
+        # Deteksi transisi otomatis saat balapan selesai
+        if self.state == InteractionState.RACING and self.mission_mgr.race_finished:
+            self.state = InteractionState.COMPLETED
+            self.prompt_text = "PENGANTARAN SELESAI! Klik rak kargo baru untuk misi berikutnya, atau tekan [G] Misi Acak."
+
     def handle_click(self):
         """Memproses klik kiri mouse pada rak atau kargo."""
         if not self.hovered_shelf:

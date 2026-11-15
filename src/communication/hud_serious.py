@@ -21,37 +21,79 @@ class SeriousHUD:
     """
 
     def __init__(self):
-        # Panel dasar gelap transparan di kiri atas layar
-        self.panel = Entity(
-            parent=camera.ui,
+        # Root container unscaled (scale=Vec3(1,1,1)) - menjaga rasio aspek font 1:1 sempurna
+        self.container = Entity(parent=camera.ui, enabled=True)
+
+        self.panel_w = 0.54
+        self.panel_h = 0.35
+
+        # Panel dasar semi-transparan kompak dengan gaya cyber-industrial
+        self.bg_panel = Entity(
+            parent=self.container,
             model='quad',
-            position=Vec3(-0.48, 0.25, 0),
-            scale=Vec3(0.78, 0.44, 1),
-            color=color.rgba32(14, 18, 26, 235),
-            enabled=True,
+            position=Vec3(-0.48, 0.28, 0),
+            scale=Vec3(self.panel_w, self.panel_h, 1),
+            color=color.rgba32(14, 18, 28, 225),
         )
 
+        # Garis aksen cyan di bagian atas panel
+        self.accent_line = Entity(
+            parent=self.container,
+            model='quad',
+            position=Vec3(-0.48, 0.28 + self.panel_h / 2 - 0.003, -0.005),
+            scale=Vec3(self.panel_w, 0.006, 1),
+            color=color.rgb32(0, 229, 255),
+        )
+
+        # Teks telemetri WMS unscaled (tidak gepeng/squished)
         self.text_display = Text(
-            parent=self.panel,
+            parent=self.container,
             text="",
-            position=Vec3(-0.48, 0.46, -0.01),
-            scale=0.92,
+            position=Vec3(-0.76, 0.44, -0.01),
+            scale=0.62,
             color=color.white,
         )
 
         self._last_update_time: float = 0.0
         self._last_rendered_text: str = ""
+        self._last_aspect_ratio: float = 0.0
+
+        from ursina import window
+        self.update_layout()
+
+    def update_layout(self):
+        """Menyesuaikan posisi panel secara dinamis agar selalu menempel rapi di kiri atas layar."""
+        from ursina import window
+        aspect = window.aspect_ratio
+        if abs(aspect - self._last_aspect_ratio) < 0.01:
+            return
+        self._last_aspect_ratio = aspect
+
+        margin_x = 0.02
+        screen_left = -aspect / 2.0
+        center_x = screen_left + margin_x + (self.panel_w / 2.0)
+        center_y = 0.28
+
+        self.bg_panel.position = Vec3(center_x, center_y, 0)
+        self.bg_panel.scale = Vec3(self.panel_w, self.panel_h, 1)
+
+        self.accent_line.position = Vec3(center_x, center_y + self.panel_h / 2.0 - 0.003, -0.005)
+        self.accent_line.scale = Vec3(self.panel_w, 0.006, 1)
+
+        self.text_display.position = Vec3(center_x - self.panel_w / 2.0 + 0.014, center_y + self.panel_h / 2.0 - 0.018, -0.01)
 
     def set_visible(self, visible: bool):
         """Menampilkan atau menyembunyikan panel HUD Serious."""
-        self.panel.enabled = visible
+        self.container.enabled = visible
         if visible:
             self._last_rendered_text = ""  # Force refresh saat dibuka kembali
 
     def update(self, mission_mgr: MissionManager, interaction_sys: InteractionSystem):
         """Memperbarui teks metrik telemetri secara efisien dengan dirty-checking dan rate-limiting."""
-        if not self.panel.enabled:
+        if not self.container.enabled:
             return
+
+        self.update_layout()
 
         now = time.perf_counter()
         # Batasi regenerasi text mesh Ursina ke 20 Hz (setiap 0.05s) kecuali baru saja selesai balapan
@@ -111,25 +153,25 @@ class SeriousHUD:
         # Evaluasi akhir
         outcome_str = mission_mgr.overall_efficiency_winner if mission_mgr.race_finished else "Sedang Berlangsung..."
 
+        # Data Heuristik Aktif
+        h_name = mission_mgr.current_heuristic_name.upper()
+        h_formula = mission_mgr.current_heuristic_info.get("formula", "")
+
         new_text = (
-            f"=== WMS TELEMETRY DASHBOARD (35x25 ARENA) ===\n"
-            f"Mode HUD          : SERIOUS (INDUSTRIAL WMS) [Tekan 'M' Ganti Mode]\n"
-            f"Status Operasi    : {interaction_sys.prompt_text}\n"
-            f"Konsinyasi Kargo  : {pickup_info} -> Tujuan: {dropoff_info}\n"
-            f"----------------------------------------------------------------------\n"
-            f"METRIK KINERJA INFORMED SEARCH:\n"
-            f"  Parameter Evaluasi       | AGV Alpha (A*)      | AGV Beta (GBFS)\n"
-            f"  Total Biaya Rute (Cost)  | {cost_a.ljust(19)} | {cost_b}\n"
-            f"  Simpul Dieksplorasi      | {nodes_a.ljust(19)} | {nodes_b}\n"
-            f"  Waktu Kalkulasi Jalur    | {time_a.ljust(19)} | {time_b}\n"
-            f"  Progres Langkah Navigasi | {steps_a.ljust(19)} | {steps_b}\n"
-            f"  Status State Mesin       | {robot_a.state.value[:17].ljust(19)} | {robot_b.state.value[:17]}\n"
-            f"----------------------------------------------------------------------\n"
-            f"ANALISIS BOTTLENECK JARINGAN:\n"
-            f"  Simpul Beririsan         : {shared_count} sel lorong ({cong_pct:.1f}% koridor bersama)\n"
-            f"  Tingkat Resiko Macet     : {risk_str}\n"
-            f"  Kecepatan Armada         : {mission_mgr.current_speed:.1f}x [Atur dgn +/-]\n"
-            f"  Hasil Evaluasi Efisiensi : {outcome_str}"
+            f" [ WMS FLEET TELEMETRY ]                      ● ONLINE\n"
+            f" HEURISTIK: [ {h_name} ] (h = {h_formula})      [H] Ganti\n"
+            f" Misi: {pickup_info} -> {dropoff_info}\n"
+            f" --------------------------------------------------------\n"
+            f" METRIK SEARCH       | [CYAN] A* (Alpha)  | [AMBER] GBFS (Beta)\n"
+            f" --------------------------------------------------------\n"
+            f" Biaya Rute (Cost)   | {cost_a.ljust(18)} | {cost_b}\n"
+            f" Simpul Eksplorasi   | {nodes_a.ljust(18)} | {nodes_b}\n"
+            f" Waktu Komputasi     | {time_a.ljust(18)} | {time_b}\n"
+            f" Progres Langkah     | {steps_a.ljust(18)} | {steps_b}\n"
+            f" Status Robot        | {robot_a.state.value[:16].ljust(18)} | {robot_b.state.value[:16]}\n"
+            f" --------------------------------------------------------\n"
+            f" BOTTLENECK: {shared_count} sel ({cong_pct:.1f}%) | {risk_str}\n"
+            f" SPEED: {mission_mgr.current_speed:.1f}x [+/-] | STATUS: {outcome_str[:32]}"
         )
 
         if new_text != self._last_rendered_text:

@@ -122,8 +122,33 @@ class AGVRobot(Entity):
             color=self.primary_col,
         )
 
-        # Sensor LIDAR dome (menempel pada visual_body)
-        self.lidar_dome = Entity(parent=self.visual_body, enabled=False)
+        self.is_beta = ("Beta" in name or "GBFS" in algorithm_label)
+        halo_radius = 1.55 if self.is_beta else 1.22
+        beacon_y = 1.20 if self.is_beta else 0.95
+        label_y = 3.4 if self.is_beta else 2.6
+
+        # Elemen Visual Tambahan Robot
+        # 1. Cincin Halo Bercahaya di Lantai Bawah Robot (Ground Underglow Neon)
+        # Menjadikan kedua robot sangat mencolok dan membentuk cincin konsentris saat di sel yang sama
+        self.ground_halo = Entity(
+            parent=self,
+            model=Cylinder(resolution=24),
+            scale=Vec3(halo_radius, 0.08, halo_radius),
+            position=Vec3(0, 0.08 if self.is_beta else 0.05, 0),
+            color=self.primary_col,
+        )
+
+        # 2. Indikator Beacon Bola Bercahaya di Atas Robot
+        self.top_beacon = Entity(
+            parent=self,
+            model='sphere',
+            scale=Vec3(0.30, 0.30, 0.30),
+            position=Vec3(0, beacon_y, 0),
+            color=self.primary_col,
+        )
+
+        # 3. Sensor LIDAR dome berputar
+        self.lidar_dome = Entity(parent=self, enabled=False)
 
         # Kotak kargo di atas dek (menempel pada visual_body)
         self.deck_cargo = Entity(
@@ -135,12 +160,12 @@ class AGVRobot(Entity):
             enabled=False,
         )
 
-        # Label Billboard melayang tepat di atas visual_body yang sudah di-offset
+        # 5. Label Billboard melayang di atas robot (ketinggian bertingkat anti Z-fighting)
         self.label_tag = Text(
             parent=self.visual_body,
             text=f"{name}\n[{algorithm_label}]",
-            position=Vec3(0, 2.2, 0),
-            scale=1.1,
+            position=Vec3(0, label_y, 0),
+            scale=1.8,
             color=self.primary_col,
             billboard=True,
             origin=(0, 0),
@@ -211,6 +236,7 @@ class AGVRobot(Entity):
         self.rotation_y = 0.0
         self.state = RobotState.IDLE_DOCK
         self.model = AssetLoader.get_agv_model()
+        self.color = self.primary_col
         self.leg1_waypoints.clear()
         self.leg2_waypoints.clear()
         self.active_waypoints.clear()
@@ -253,6 +279,37 @@ class AGVRobot(Entity):
             self.trail_pool.append(marker)
         self.trail_active_count += 1
 
+    @staticmethod
+    def _compute_lane_offset(waypoints: List[Vec3], offset: float) -> List[Vec3]:
+        """
+        Menambahkan separasi lajur lateral tegak lurus arah lintasan (Lateral Lane Offset).
+        Mencegah kedua robot bertabrakan atau saling menumpuk/clipping saat melalui lorong yang sama.
+        """
+        n = len(waypoints)
+        if n < 2:
+            return list(waypoints)
+        out = []
+        for i in range(n):
+            if i == 0:
+                dx = waypoints[1].x - waypoints[0].x
+                dz = waypoints[1].z - waypoints[0].z
+            elif i == n - 1:
+                dx = waypoints[i].x - waypoints[i - 1].x
+                dz = waypoints[i].z - waypoints[i - 1].z
+            else:
+                dx = waypoints[i + 1].x - waypoints[i - 1].x
+                dz = waypoints[i + 1].z - waypoints[i - 1].z
+
+            length = math.hypot(dx, dz)
+            if length > 0.001:
+                nx = dz / length
+                nz = -dx / length
+            else:
+                nx, nz = 0.0, 0.0
+
+            out.append(Vec3(waypoints[i].x + nx * offset, waypoints[i].y, waypoints[i].z + nz * offset))
+        return out
+
     def set_mission_legs(
         self,
         leg1_path: List[Coord],
@@ -264,13 +321,19 @@ class AGVRobot(Entity):
         Memuat rute misi dua etape:
         - Leg 1: Dari posisi saat ini ke Pick-up Access Node
         - Leg 2: Dari Pick-up Access Node ke Drop-off Access Node
+        Menggunakan pemisahan lajur lateral (Dual-Lane AGV separation).
         """
         self.clear_trail()
         self.on_pickup_callback = on_pickup
         self.on_dropoff_callback = on_dropoff
 
-        self.leg1_waypoints = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
-        self.leg2_waypoints = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
+        raw_leg1 = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
+        raw_leg2 = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
+
+        # Separasi lajur lateral: Alpha di lajur kanan (+0.22), Beta di lajur kiri (-0.22)
+        offset = -0.22 if self.is_beta else 0.22
+        self.leg1_waypoints = self._compute_lane_offset(raw_leg1, offset)
+        self.leg2_waypoints = self._compute_lane_offset(raw_leg2, offset)
 
         self.total_mission_steps = len(leg1_path) + len(leg2_path)
         self.total_steps_executed = 0
@@ -288,8 +351,11 @@ class AGVRobot(Entity):
 
     def update(self):
         """Loop pergerakan per frame (dipanggil otomatis oleh Ursina)."""
-        # Sinkronkan posisi & rotasi visual_body independen terhadap logic pivot
-        self._update_visual_body()
+        # Efek denyut halus pada underglow neon robot agar dinamis dan selalu terlihat
+        base_r = 1.55 if self.is_beta else 1.22
+        pulse = base_r + math.sin(time.time() * 5.0) * 0.08
+        self.ground_halo.scale_x = pulse
+        self.ground_halo.scale_z = pulse
 
         # Sensor LIDAR berputar terus menerus
         if hasattr(self, 'lidar_dome') and self.lidar_dome:
@@ -365,6 +431,7 @@ class AGVRobot(Entity):
         if self.state == RobotState.LOADING_CARGO:
             # Kargo berhasil dimuat ke dek, mulai balapan ke Drop-off!
             self.model = AssetLoader.get_agv_loaded_model()
+            self.color = self.primary_col
             self.active_waypoints = self.leg2_waypoints
             self.waypoint_idx = 0
             self.state = RobotState.MOVING_TO_DROPOFF
@@ -372,6 +439,7 @@ class AGVRobot(Entity):
         elif self.state == RobotState.UNLOADING_CARGO:
             # Kargo berhasil diturunkan, misi selesai!
             self.model = AssetLoader.get_agv_model()
+            self.color = self.primary_col
             self.state = RobotState.FINISHED
             self.finish_time = time.time()
 
