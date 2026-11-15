@@ -1,10 +1,12 @@
 """
 warehouse_scene.py
 ==================
-Konstruksi lingkungan 3D arena gudang 50x50 dengan 3 teknik optimasi ekstrem:
-1. Floor Optimization (Procedural Texture Tiling pada 1 Single Plane raksasa).
-2. Static Mesh Combining (Menggabungkan ratusan visual rak & dinding menjadi single mesh).
+Konstruksi lingkungan 3D arena gudang 35x25 dengan 3 teknik optimasi ekstrem:
+1. Floor Optimization (Procedural Texture Tiling pada 1 Single Plane raksasa 35x25).
+2. Static Mesh Combining (Menggabungkan visual rak & balok dinding beton menjadi single mesh).
 3. Asynchronous Loading (Generator coroutine dengan yield dan loading screen di tengah layar).
+Menyediakan visualisasi rintangan dinding (Wall Obstacles) abu-abu beton kontras,
+stasiun docking Start, target Goal, dan penyesuaian kamera terpusat.
 """
 
 from typing import Callable, Dict, List, Optional, Tuple
@@ -29,6 +31,7 @@ from src.config import (
     GRID_HEIGHT,
     SPAWN_ALPHA,
     SPAWN_BETA,
+    DEFAULT_GOAL,
     grid_to_world,
     COLOR_ALPHA_PRIMARY,
     COLOR_BETA_PRIMARY,
@@ -71,8 +74,8 @@ def _create_procedural_grid_texture(resolution: int = 64) -> Texture:
 
 class WarehouseScene(Entity):
     """
-    Pengelola lingkungan 3D gudang skala besar dengan pemuatan asinkron (generator coroutine)
-    dan static mesh combining.
+    Pengelola lingkungan 3D gudang skala 35x25 dengan pemuatan asinkron (generator coroutine),
+    static mesh combining balok dinding beton dan rak, serta kontrol kamera.
     """
 
     def __init__(self, graph: WarehouseGraph100, on_complete: Optional[Callable[[], None]] = None):
@@ -105,7 +108,7 @@ class WarehouseScene(Entity):
 
         self.loading_title = Text(
             parent=self.loading_backdrop,
-            text="MEMUAT ARENA 50x50... MOHON TUNGGU",
+            text="MEMUAT ARENA 35x25... MOHON TUNGGU",
             position=Vec3(0, 0.08, -0.01),
             scale=1.5,
             color=color.rgb32(0, 229, 255),
@@ -158,10 +161,10 @@ class WarehouseScene(Entity):
         self._setup_lighting()
         yield
 
-        self._update_progress("Membangun Lantai Tiled 50x50 (Single-Plane Texture)...", 0.12)
+        self._update_progress("Membangun Lantai Tiled 35x25 (Single-Plane Texture)...", 0.12)
         grid_tex = _create_procedural_grid_texture(64)
 
-        # SATU plane raksasa untuk seluruh 10.000 sel (Shader-level Texture Tiling)
+        # SATU plane raksasa untuk seluruh sel 35x25 (Shader-level Texture Tiling)
         self.floor = Entity(
             model='plane',
             position=Vec3(0, 0, 0),
@@ -184,7 +187,7 @@ class WarehouseScene(Entity):
 
         all_shelves: List[ShelfData] = list(self.graph.shelves.values())
         total_shelves = len(all_shelves)
-        batch_size = 350
+        batch_size = 150
 
         for i in range(0, total_shelves, batch_size):
             batch = all_shelves[i:i + batch_size]
@@ -199,11 +202,11 @@ class WarehouseScene(Entity):
                     scale=Vec3(0.88, 1.0, 0.88),
                 )
 
-                # 2. Separated Collider Box (InteractiveShelf murni untuk raycasting)
+                # 2. Separated Collider Box (InteractiveShelf untuk raycasting)
                 shelf_ent = InteractiveShelf(shelf_data=sdata, visual_entity=vis_ent)
                 self.interactive_shelves[sdata.coord] = shelf_ent
 
-            pct = 0.20 + (0.50 * (min(i + batch_size, total_shelves) / total_shelves))
+            pct = 0.20 + (0.50 * (min(i + batch_size, total_shelves) / max(total_shelves, 1)))
             self._update_progress(f"Menyusun Blok Rak Palet [{min(i + batch_size, total_shelves)}/{total_shelves}]...", pct)
             yield
 
@@ -214,21 +217,28 @@ class WarehouseScene(Entity):
         yield
 
         # =====================================================================
-        # TAHAP 4: SPAWN DINDING & COMBINE STATIS
+        # TAHAP 4: SPAWN RINTANGAN DINDING (WALL OBSTACLES) & PERIMETER
         # =====================================================================
         self._update_progress("Membangun Dinding Luar & Sekat Partisi Labirin...", 0.82)
         self.static_walls_parent = Entity(color=color.rgb32(*COLOR_WALL))
         self.static_wall_trims_parent = Entity(color=color.rgb32(*COLOR_WALL_TRIM))
 
-        # 4 Dinding Pembatas Luar
+        # 1. Empat Dinding Pembatas Luar Arena (Perimeter Walls)
         arena_w = GRID_WIDTH + 2
         arena_h = GRID_HEIGHT + 2
-        wall_h = 2.4
+        wall_h = PERIMETER_WALL_HEIGHT
         wall_t = 0.5
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t))
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
-        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h))
+        col_perim = color.rgb32(*COLOR_PERIMETER_WALL)
+
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h), color=col_perim)
+        Entity(parent=self.static_walls_parent, model='cube', position=Vec3(-arena_w / 2, wall_h / 2, 0), scale=Vec3(wall_t, wall_h, arena_h), color=col_perim)
+
+        # 2. Rintangan Dinding Internal (Wall Obstacles & Sekat Cul-de-Sac)
+        # Menggunakan balok cube abu-abu beton kontras dan tinggi 2.0 (lebih tinggi dari rak ~1.0)
+        col_wall = color.rgb32(*COLOR_WALL)
+        internal_wall_h = WALL_HEIGHT
 
         # List Trim Kuning Keselamatan Atas Dinding Luar
         Entity(parent=self.static_wall_trims_parent, model='cube', position=Vec3(0, wall_h + 0.05, arena_h / 2), scale=Vec3(arena_w, 0.1, wall_t * 1.05))
@@ -240,12 +250,13 @@ class WarehouseScene(Entity):
         for y in range(self.graph.height):
             for x in range(self.graph.width):
                 if self.graph.grid[y, x] == CellType.WALL:
-                    pos = grid_to_world(x, y, 1.0)
+                    pos = grid_to_world(x, y, internal_wall_h / 2.0)
                     Entity(
                         parent=self.static_walls_parent,
                         model='cube',
                         position=pos,
-                        scale=Vec3(0.98, 2.0, 0.98),
+                        scale=Vec3(0.98, internal_wall_h, 0.98),
+                        color=col_wall,
                     )
                     # Hazard yellow safety top cap
                     Entity(
@@ -262,17 +273,17 @@ class WarehouseScene(Entity):
         yield
 
         # =====================================================================
-        # TAHAP 5: STASIUN DOCKING STATIS & KAMERA
+        # TAHAP 5: STASIUN DOCKING (START) & TARGET GOAL
         # =====================================================================
         self._update_progress("Menyiapkan Stasiun Docking & Preset Kamera...", 0.95)
-        self._build_dock_stations()
+        self._build_dock_and_goal_stations()
         self._setup_camera()
         yield
 
         # =====================================================================
         # TAHAP 6: SELESAI & HAPUS LOADING SCREEN
         # =====================================================================
-        self._update_progress("Arena 50x50 Siap!", 1.0)
+        self._update_progress("Arena 35x25 Siap!", 1.0)
         yield
 
         destroy(self.loading_backdrop)
@@ -307,7 +318,7 @@ class WarehouseScene(Entity):
         """Stasiun pengisian dock pojok kiri bawah dengan aksen neon bergradasi."""
         dock_tower_model = AssetLoader.get_dock_model()
 
-        # Dock Alpha (A*) di (1, 1)
+        # Dock Alpha (A* Search) di (1, 1)
         pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
         # Pad lantai parkir pengisian daya robot Alpha
         Entity(
@@ -357,8 +368,31 @@ class WarehouseScene(Entity):
             origin=(0, 0),
         )
 
+        # Platform Target Goal di pojok kanan atas (32, 21)
+        pos_g = grid_to_world(DEFAULT_GOAL[0], DEFAULT_GOAL[1], 0.0)
+        Entity(
+            model='cube',
+            position=pos_g + Vec3(0, 0.05, 0),
+            scale=Vec3(0.94, 0.10, 0.94),
+            color=color.rgb32(*COLOR_GOAL_PAD),
+        )
+        Entity(
+            model='cube',
+            position=pos_g + Vec3(0, 0.02, 0),
+            scale=Vec3(1.10, 0.04, 1.10),
+            color=color.rgb32(30, 40, 50),
+        )
+        Text(
+            text="GOAL STATION\n(Delivery Point)",
+            position=pos_g + Vec3(0, 1.8, 0),
+            scale=1.5,
+            color=color.rgb32(*COLOR_GOAL_PAD),
+            billboard=True,
+            origin=(0, 0),
+        )
+
     def _setup_camera(self):
-        """Kamera multi-mode terpusat grid 50x50."""
+        """Kamera multi-mode terpusat pada arena 35x25."""
         camera.fov = CAMERA_PRESETS["isometrik"]["fov"]
         self.free_cam = EditorCamera(enabled=False)
         self.apply_camera_mode("isometrik")

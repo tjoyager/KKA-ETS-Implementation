@@ -1,5 +1,5 @@
 """
-Paket Environment: Pemuatan Aset 3D, Rak Interaktif, dan Pemandangan Gudang 50x50.
+Paket Environment: Pemuatan Aset 3D, Rak Interaktif, dan Pemandangan Gudang 35x25.
 """
 
 from .asset_loader import AssetLoader

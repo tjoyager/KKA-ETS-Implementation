@@ -1,22 +1,23 @@
 """
 config.py
 =========
-Konfigurasi global dan parameter simulasi simulator gudang 3D (50x50).
-Menyimpan konfigurasi grid, titik spawn, palet warna robot & tema,
-serta path aset 3D eksternal.
+Konfigurasi global dan parameter simulasi simulator gudang 3D (35x25).
+Menyimpan konfigurasi grid 35x25, titik docking Start & Goal,
+palet warna robot & tema, rintangan dinding (wall obstacles),
+preset kamera yang disesuaikan, serta parameter rendering visual offset.
 """
 
 from typing import Tuple
 
 # ============================================================================
-# DIMENSI GRID & KOORDINAT DUNIA 3D
+# DIMENSI GRID & KOORDINAT DUNIA 3D (SKALA 35x25)
 # ============================================================================
-GRID_WIDTH: int = 50
-GRID_HEIGHT: int = 50
+GRID_WIDTH: int = 35   # Panjang sumbu X (35 sel: 0..34)
+GRID_HEIGHT: int = 25  # Lebar sumbu Z / Y (25 sel: 0..24)
 
 WORLD_SCALE: float = 1.0
-OFFSET_X: float = (GRID_WIDTH - 1) / 2.0   # 24.5
-OFFSET_Z: float = (GRID_HEIGHT - 1) / 2.0  # 24.5
+OFFSET_X: float = (GRID_WIDTH - 1) / 2.0   # 17.0
+OFFSET_Z: float = (GRID_HEIGHT - 1) / 2.0  # 12.0
 
 
 def grid_to_world(x: float, y: float, elevation: float = 0.0):
@@ -35,14 +36,18 @@ def world_to_grid(world_pos) -> Tuple[int, int]:
 
 
 # ============================================================================
-# TITIK SPAWN STATIS DOCKING (STANDBY AREA POJOK KIRI BAWAH)
+# TITIK START (DOCKING STATIONS) & GOAL PROPORSIONAL DALAM GRID 35x25
 # ============================================================================
-# Koordinat absolut di pojok kiri bawah arena
-SPAWN_ALPHA: Tuple[int, int] = (1, 1)  # AGV Alpha (A* Search)
-SPAWN_BETA: Tuple[int, int] = (1, 3)   # AGV Beta (Greedy Best-First Search)
+# Area Standby & Docking di pojok kiri bawah arena
+SPAWN_ALPHA: Tuple[int, int] = (1, 1)   # AGV Alpha (A* Search)
+SPAWN_BETA: Tuple[int, int] = (1, 3)    # AGV Beta (Greedy Best-First Search)
+DEFAULT_START: Tuple[int, int] = (1, 2) # Titik tengah docking area
+
+# Titik Target Goal di seberang diagonal (pojok kanan atas arena)
+DEFAULT_GOAL: Tuple[int, int] = (32, 21)
 
 STANDBY_ZONE_MIN: Tuple[int, int] = (0, 0)
-STANDBY_ZONE_MAX: Tuple[int, int] = (5, 5)
+STANDBY_ZONE_MAX: Tuple[int, int] = (4, 4)
 
 # ============================================================================
 # PARAMETER PERGERAKAN & KINEMATIKA ROBOT
@@ -65,7 +70,7 @@ COLOR_BETA_SECONDARY = (35, 25, 20)      # Dark Bronze
 COLOR_BETA_TRAIL = (231, 76, 60)         # Merah Oranye Api (Sub-optimal Path)
 
 # ============================================================================
-# WARNA & VISUAL RAK (SHELF) & KARGO
+# WARNA & VISUAL RAK (SHELF), DINDING (WALL), & KARGO
 # ============================================================================
 COLOR_SHELF_FRAME = (45, 85, 130)        # Rangka baja biru industrial modern bergradasi
 COLOR_SHELF_BEAM = (245, 130, 32)        # Balok penopang oranye keselamatan (High-visibility)
@@ -84,6 +89,35 @@ COLOR_HIGHWAY = (240, 195, 40)           # Marka koridor arteri utama (Cross Ais
 COLOR_CARGO_BOX = (195, 145, 95)         # Kardus cokelat karton standar
 COLOR_CARGO_PRIORITY = (255, 205, 30)    # Emas kontainer kargo bernilai tinggi
 
+# Rintangan Dinding (Wall Obstacles) - Abu-abu beton kontras
+COLOR_WALL = (125, 132, 145)             # Abu-abu beton industrial
+COLOR_WALL_ACCENT = (80, 88, 100)        # Aksen tepi balok dinding
+COLOR_PERIMETER_WALL = (60, 66, 76)      # Dinding pembatas luar arena
+COLOR_GOAL_PAD = (46, 204, 113)          # Hijau Emerald untuk target Goal
+
+WALL_HEIGHT: float = 2.0                 # Tinggi balok dinding (rak = 1.0, dinding = 2.0 agar kontras)
+PERIMETER_WALL_HEIGHT: float = 2.4       # Dinding batas luar arena
+
+# ============================================================================
+# RENDERING OFFSETS (MENCEGAH Z-FIGHTING & MODEL OVERLAP)
+# ============================================================================
+# Decoupled Follower directional right-vector lateral offset distance
+ROBOT_OFFSET_DISTANCE: float = 0.20      # Jarak lateral dari center pivot (0.20)
+ALPHA_MODEL_ELEVATION: float = 0.010     # Elevasi mikro visual Alpha
+BETA_MODEL_ELEVATION: float = 0.015      # Elevasi mikro visual Beta (mencegah Z-fighting)
+
+ALPHA_VISUAL_OFFSET_X: float = -0.20     # Backward compatibility alias
+ALPHA_VISUAL_OFFSET_Y: float = 0.010
+BETA_VISUAL_OFFSET_X: float = 0.20
+BETA_VISUAL_OFFSET_Y: float = 0.015
+
+ALPHA_TRAIL_OFFSET_X: float = -0.16      # Geser kotak jejak ke kiri
+ALPHA_TRAIL_OFFSET_Y: float = 0.028      # Ketinggian jejak Alpha di lantai
+BETA_TRAIL_OFFSET_X: float = 0.16        # Geser kotak jejak ke kanan
+BETA_TRAIL_OFFSET_Y: float = 0.032       # Ketinggian jejak Beta di lantai
+
+TRAIL_SCALE_SPLIT: Tuple[float, float, float] = (0.28, 0.025, 0.55)  # Ukuran kotak jejak terbelah dua
+
 # ============================================================================
 # JALUR BERKAS ASET MODEL 3D EKSTERNAL
 # ============================================================================
@@ -96,7 +130,7 @@ MODEL_PATH_SHELF = "assets/models/empty-shelf.obj"
 MODEL_PATH_CARGO = "assets/models/cargo.obj"
 
 # ============================================================================
-# PRESET KAMERA ARENA 50x50
+# PRESET KAMERA ARENA 35x25 (Disesuaikan agar seluruh grid masuk frame penuh)
 # ============================================================================
 CAMERA_PRESETS = {
     "isometrik": {

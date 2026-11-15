@@ -5,6 +5,15 @@ Pengendali robot AGV otonom (AGV Controller) berbasis Ursina Engine.
 Menangani pergerakan halus antar-simpul grid (waypoint translation),
 interpolasi sudut rotasi arah belokan (lerp_angle heading), animasi ambil & taruh kargo,
 serta penanda jejak bercahaya dinamis (Trajectory Trail).
+
+Menerapkan Arsitektur "Decoupled Follower" (Entitas Visual Independen):
+1. Logic Pivot: AGVRobot bertindak sebagai entitas logika murni (invisible) yang bergerak
+   100% tepat di tengah koordinat sel grid.
+2. Independent Visual Body: self.visual_body adalah entitas independen (bukan child dari self)
+   untuk mencegah isu frustum culling/clipping dan rotasi lokal yang salah hitung pada Ursina.
+3. Global Directional Vector Offset: Posisi visual_body dihitung di setiap frame berdasarkan
+   vektor arah absolut robot (self.right * offset_distance) dengan selisih elevasi mikro.
+4. Billboard/Label: Tag nama melayang menempel langsung di atas visual_body.
 """
 
 import math
@@ -18,13 +27,20 @@ from ursina import (
     lerp_angle,
     destroy,
     Text,
-    Cylinder,
 )
 
 from src.config import (
     grid_to_world,
     ROTATION_SPEED,
     ACTION_PAUSE_DURATION,
+    ROBOT_OFFSET_DISTANCE,
+    ALPHA_MODEL_ELEVATION,
+    BETA_MODEL_ELEVATION,
+    ALPHA_TRAIL_OFFSET_X,
+    ALPHA_TRAIL_OFFSET_Y,
+    BETA_TRAIL_OFFSET_X,
+    BETA_TRAIL_OFFSET_Y,
+    TRAIL_SCALE_SPLIT,
 )
 from src.environment.asset_loader import AssetLoader
 
@@ -42,8 +58,8 @@ class RobotState(Enum):
 
 class AGVRobot(Entity):
     """
-    Entitas pengontrol AGV dengan pergerakan kinematika halus, visualisasi LIDAR berputar,
-    kargo dinamis di dek, dan animasi trajectory trail.
+    Entitas pengontrol AGV dengan pergerakan kinematika halus,
+    arsitektur Decoupled Visual Follower, dan trajectory trail split terbelah dua.
     """
 
     def __init__(
@@ -54,6 +70,9 @@ class AGVRobot(Entity):
         primary_color_rgb: Tuple[int, int, int],
         trail_color_rgb: Tuple[int, int, int],
         speed: float = 6.5,
+        is_alpha: Optional[bool] = None,
+        trail_offset_x: Optional[float] = None,
+        trail_offset_y: Optional[float] = None,
         **kwargs,
     ):
         self.robot_name = name
@@ -63,14 +82,44 @@ class AGVRobot(Entity):
         self.trail_col = color.rgb32(*trail_color_rgb)
         self.speed = speed
 
+        # Tentukan identitas robot (Alpha = Kiri, Beta = Kanan)
+        if is_alpha is None:
+            self.is_alpha: bool = ("Alpha" in name or "A*" in algorithm_label)
+        else:
+            self.is_alpha = is_alpha
+
+        # Offset jejak lintasan (split trail terbelah dua)
+        if trail_offset_x is None:
+            self.trail_offset_x = ALPHA_TRAIL_OFFSET_X if self.is_alpha else BETA_TRAIL_OFFSET_X
+        else:
+            self.trail_offset_x = trail_offset_x
+
+        if trail_offset_y is None:
+            self.trail_offset_y = ALPHA_TRAIL_OFFSET_Y if self.is_alpha else BETA_TRAIL_OFFSET_Y
+        else:
+            self.trail_offset_y = trail_offset_y
+
         spawn_world = grid_to_world(spawn_coord[0], spawn_coord[1], 0.0)
 
+        # ---------------------------------------------------------------------
+        # 1. ROOT ENTITY: PIVOT LOGIKA MURNI (Bergerak tepat di grid, invisible)
+        # ---------------------------------------------------------------------
         super().__init__(
+            position=spawn_world,
+            visible=False,
+            **kwargs,
+        )
+
+        # ---------------------------------------------------------------------
+        # 2. ENTITAS VISUAL INDEPENDEN (DECOUPLED FOLLOWER - TANPA parent=self)
+        # ---------------------------------------------------------------------
+        # Dibuat langsung di scene (bukan child self) untuk mencegah frustum culling
+        # dan clipping saat kedua robot berpapasan atau menempati sel grid yang sama.
+        self.visual_body = Entity(
             model=AssetLoader.get_agv_model(),
             position=spawn_world,
             scale=Vec3(0.55, 0.55, 0.55),
             color=self.primary_col,
-            **kwargs,
         )
 
         self.is_beta = ("Beta" in name or "GBFS" in algorithm_label)
@@ -101,9 +150,9 @@ class AGVRobot(Entity):
         # 3. Sensor LIDAR dome berputar
         self.lidar_dome = Entity(parent=self, enabled=False)
 
-        # 4. Kotak kargo di atas dek (awalnya disembunyikan sampai robot menjemput barang)
+        # Kotak kargo di atas dek (menempel pada visual_body)
         self.deck_cargo = Entity(
-            parent=self,
+            parent=self.visual_body,
             model=AssetLoader.get_cargo_model(),
             position=Vec3(0, 0.26, -0.08),
             scale=Vec3(0.52, 0.38, 0.52),
@@ -113,7 +162,7 @@ class AGVRobot(Entity):
 
         # 5. Label Billboard melayang di atas robot (ketinggian bertingkat anti Z-fighting)
         self.label_tag = Text(
-            parent=self,
+            parent=self.visual_body,
             text=f"{name}\n[{algorithm_label}]",
             position=Vec3(0, label_y, 0),
             scale=1.8,
@@ -140,6 +189,46 @@ class AGVRobot(Entity):
         self.on_pickup_callback = None
         self.on_dropoff_callback = None
 
+        # Sinkronkan posisi dan rotasi visual follower secara absolut sejak spawn
+        self._update_visual_body()
+
+    @property
+    def model(self):
+        """Meneruskan akses model ke entitas visual independen."""
+        return self.visual_body.model if hasattr(self, 'visual_body') and self.visual_body else None
+
+    @model.setter
+    def model(self, value):
+        """Mengubah model 3D pada visual_body secara dinamis."""
+        if hasattr(self, 'visual_body') and self.visual_body:
+            self.visual_body.model = value
+
+    def _update_visual_body(self):
+        """
+        Sistem Follower Independen (Decoupled Follower):
+        Menyinkronkan rotasi dan posisi visual_body terhadap logic pivot di setiap frame.
+        Menggunakan Directional Right Vector Offset absolut di world space.
+        """
+        if not hasattr(self, 'visual_body') or self.visual_body is None:
+            return
+
+        # 1. Salin rotasi secara absolut dari logic pivot
+        self.visual_body.rotation = self.rotation
+
+        # 2. Cari vektor "Kanan" (Right Vector) dari rotasi robot saat ini
+        right_vector = self.right
+        offset_distance = ROBOT_OFFSET_DISTANCE  # 0.20
+
+        # 3. Posisikan visual_body dengan perhitungan vektor arah absolut:
+        #    Jika Alpha (A*), geser ke Kiri (berlawanan right_vector).
+        #    Jika Beta (GBFS), geser ke Kanan (+ right_vector).
+        if self.is_alpha:
+            self.visual_body.position = self.position - (right_vector * offset_distance)
+            self.visual_body.y = self.y + ALPHA_MODEL_ELEVATION  # +0.010
+        else:
+            self.visual_body.position = self.position + (right_vector * offset_distance)
+            self.visual_body.y = self.y + BETA_MODEL_ELEVATION   # +0.015
+
     def reset_to_dock(self):
         """Mereset posisi robot ke stasiun dock awal dan menonaktifkan trail (tanpa destroy)."""
         self.clear_trail()
@@ -157,6 +246,7 @@ class AGVRobot(Entity):
         self.total_steps_executed = 0
         self.total_mission_steps = 0
         self.finish_time = None
+        self._update_visual_body()
 
     def clear_trail(self):
         """Menonaktifkan seluruh jejak bercahaya via pool recycling (Zero GC Churn)."""
@@ -165,16 +255,25 @@ class AGVRobot(Entity):
         self.trail_active_count = 0
 
     def spawn_trail_marker(self, pos: Vec3):
-        """Menampilkan penanda jejak bercahaya menggunakan Entity Pool daur-ulang."""
+        """
+        Menampilkan penanda jejak bercahaya menggunakan Entity Pool daur-ulang.
+        Menerapkan 'Split Visual Jejak' dengan menggeser kotak lintasan ke kiri/kanan
+        dan menggunakan ukuran terbelah dua agar jejak Alpha dan Beta terlihat berdampingan
+        tanpa mengalami Z-fighting / flickering di sel yang sama.
+        """
+        marker_pos = Vec3(pos.x + self.trail_offset_x, self.trail_offset_y, pos.z)
+        marker_scale = Vec3(*TRAIL_SCALE_SPLIT) if self.trail_offset_x != 0.0 else Vec3(0.55, 0.025, 0.55)
+
         if self.trail_active_count < len(self.trail_pool):
             marker = self.trail_pool[self.trail_active_count]
-            marker.position = Vec3(pos.x, 0.03, pos.z)
+            marker.position = marker_pos
+            marker.scale = marker_scale
             marker.enabled = True
         else:
             marker = Entity(
                 model='cube',
-                position=Vec3(pos.x, 0.03, pos.z),
-                scale=Vec3(0.55, 0.025, 0.55),
+                position=marker_pos,
+                scale=marker_scale,
                 color=self.trail_col,
             )
             self.trail_pool.append(marker)
@@ -246,6 +345,7 @@ class AGVRobot(Entity):
             self.state = RobotState.MOVING_TO_PICKUP
             self.position = self.active_waypoints[0]
             self.spawn_trail_marker(self.position)
+            self._update_visual_body()
         else:
             self.state = RobotState.FINISHED
 
@@ -258,7 +358,8 @@ class AGVRobot(Entity):
         self.ground_halo.scale_z = pulse
 
         # Sensor LIDAR berputar terus menerus
-        self.lidar_dome.rotation_y += 360 * time.dt
+        if hasattr(self, 'lidar_dome') and self.lidar_dome:
+            self.lidar_dome.rotation_y += 360 * time.dt
 
         if self.is_paused or self.state in (RobotState.IDLE_DOCK, RobotState.FINISHED):
             return
@@ -303,6 +404,9 @@ class AGVRobot(Entity):
             self.x += dx * ratio
             self.z += dz * ratio
 
+        # Perbarui posisi visual follower setelah translasi & rotasi di frame ini
+        self._update_visual_body()
+
     def _handle_leg_completion(self):
         """Dipanggil saat robot mencapai titik akhir etape rute."""
         if self.state == RobotState.MOVING_TO_PICKUP:
@@ -318,6 +422,9 @@ class AGVRobot(Entity):
             self.pause_timer = ACTION_PAUSE_DURATION
             if self.on_dropoff_callback:
                 self.on_dropoff_callback(self)
+
+        elif self.state == RobotState.FINISHED:
+            pass
 
     def _resume_after_action(self):
         """Melanjutkan pergerakan setelah animasi ambil / taruh kargo selesai."""
@@ -335,3 +442,8 @@ class AGVRobot(Entity):
             self.color = self.primary_col
             self.state = RobotState.FINISHED
             self.finish_time = time.time()
+
+    def on_destroy(self):
+        """Membersihkan entitas visual independen saat robot didestroy."""
+        if hasattr(self, 'visual_body') and self.visual_body:
+            destroy(self.visual_body)
