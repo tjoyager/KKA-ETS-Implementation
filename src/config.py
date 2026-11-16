@@ -134,21 +134,34 @@ MODEL_PATH_CARGO = "assets/models/cargo.obj"
 # ============================================================================
 CAMERA_PRESETS = {
     "isometrik": {
-        "pos": (-65.0, 78.0, -65.0),
-        "target": (-4.0, 0.0, -4.0),
-        "fov": 48,
+        "pos": (-85.0, 65.0, -65.0),   # Kamera ditarik lebih dekat (Y dan Z dikecilkan)
+        "target": (-20.0, 10.0, 0.0),   # Target digeser jauh ke kiri agar gudang tampak di kanan
+        "fov": 40,                     # FOV diperkecil untuk efek Zoom In
     },
     "topdown": {
-        "pos": (0.0, 96.0, -3.0),
-        "target": (0.0, 0.0, -3.0),
-        "fov": 54,
+        "pos": (-10.0, 80.0, -2.0),
+        "target": (-10.0, 5.0, -5.0),
+        "fov": 50,
     },
     "follow_alpha": {
-        "offset": (0.0, 16.0, -14.0),
-        "fov": 55,
+        "offset": (0.0, 12.0, -10.0), # Zoom in untuk kamera follow
+        "fov": 50,
     },
     "follow_beta": {
-        "offset": (0.0, 16.0, -14.0),
-        "fov": 55,
+        "offset": (0.0, 12.0, -10.0),
+        "fov": 50,
     },
 }
+
+# ============================================================================
+# KONFIGURASI UI MODERN (MAKEOVER)
+# ============================================================================
+import os
+
+# Pastikan folder assets/fonts ada. Jika Anda tidak mendownload font, 
+# Ursina akan fallback ke font bawaan (tidak akan crash).
+FONT_PATH = 'assets/fonts/Roboto-Regular.ttf' 
+
+# Warna UI Glassmorphism (Semi-transparan gelap kebiruan)
+COLOR_UI_BG = (10, 15, 25, 180)      # Latar belakang panel
+COLOR_UI_BORDER = (0, 229, 255, 100) # Garis tepi cyan transparan
