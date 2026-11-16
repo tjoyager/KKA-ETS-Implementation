@@ -565,17 +565,47 @@ class MissionManager:
         self._sync_robot_context()
         self._refresh_charging_markers()
 
-        # Teleportasi robot kembali ke titik Start dock dan isi daya baterai penuh
-        self.robot_alpha.reset_to_dock()
-        self.robot_beta.reset_to_dock()
+        # 1. Teleportasi robot ke sel grid tepat di depan Transfer Gate (keluar dari gerbang)
+        gate_alpha = (33, 12)
+        gate_beta = (33, 14)
+        if not self.graph.is_walkable(gate_alpha[0], gate_alpha[1]):
+            gate_alpha = (33, 13)
+        if not self.graph.is_walkable(gate_beta[0], gate_beta[1]):
+            gate_beta = (33, 13)
+
+        self.robot_alpha.clear_trail()
+        self.robot_beta.clear_trail()
+        self.robot_alpha.position = grid_to_world(gate_alpha[0], gate_alpha[1], 0.0)
+        self.robot_beta.position = grid_to_world(gate_beta[0], gate_beta[1], 0.0)
+        self.robot_alpha.rotation_y = -90.0  # Menghadap ke barat (masuk ke dalam gudang)
+        self.robot_beta.rotation_y = -90.0
+        self.robot_alpha.deck_cargo.enabled = False
+        self.robot_beta.deck_cargo.enabled = False
+
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
+
+        # 2. Isi penuh baterai mereka
         self.robot_alpha.recharge_full()
         self.robot_beta.recharge_full()
 
+        # Sambungkan callback kedatangan di base dock
+        self.robot_alpha.on_finish_callback = self._on_robot_finish
+        self.robot_beta.on_finish_callback = self._on_robot_finish
+
+        # Set state non-idle agar force_return_to_dock mengkalkulasi rute pulang
+        self.robot_alpha.state = RobotState.MOVING_TO_DROPOFF
+        self.robot_beta.state = RobotState.MOVING_TO_DROPOFF
+
+        # 3. Panggil force_return_to_dock agar robot mengkalkulasi rute mandiri pulang ke Twin Dock
+        self.robot_alpha.force_return_to_dock(self.graph, self.current_heuristic_fn)
+        self.robot_beta.force_return_to_dock(self.graph, self.current_heuristic_fn)
+
         self.mission_type = MissionType.STANDARD_DELIVERY
-        self.is_race_active = False
+        self.is_race_active = True
         self.race_finished = False
+        self.race_start_time = time.time()
+        self.race_elapsed_time = 0.0
 
         # Fade-In kembali ke tampilan normal
         camera.overlay.animate_color(color.clear, duration=1.0)
