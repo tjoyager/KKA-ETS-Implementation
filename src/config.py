@@ -173,17 +173,8 @@ BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pul
 # Stasiun pengisian tambahan (selain dock spawn Alpha & Beta). Harus walkable di Zone A dan B.
 CHARGING_STATIONS = [(22, 15), (7, 17), (19, 9), (30, 9), (30, 19)]
 
-# ============================================================================
-# KONFIGURASI UI MODERN (MAKEOVER)
-# ============================================================================
-import os
-from pathlib import Path
-from ursina import application
-
-# Pastikan folder asset mengarah ke root repositori agar font & model selalu ditemukan
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-application.asset_folder = PROJECT_ROOT
-
+# Pastikan folder assets/fonts ada. Jika Anda tidak mendownload font, 
+# Ursina akan fallback ke font bawaan (tidak akan crash).
 FONT_PATH = 'assets/fonts/Roboto-Regular.ttf' 
 
 # Warna UI Glassmorphism (Semi-transparan gelap kebiruan)
