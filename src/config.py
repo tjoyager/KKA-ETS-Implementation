@@ -152,3 +152,13 @@ CAMERA_PRESETS = {
         "fov": 55,
     },
 }
+
+# ============================================================================
+# SISTEM BATERAI AGV & STASIUN PENGISIAN DAYA (CHARGING DOCK)
+# ============================================================================
+BATTERY_DRAIN_PER_GRID: float = 2.0       # % baterai terkuras per 1 sel grid
+BATTERY_CRITICAL_THRESHOLD: float = 20.0  # Batas kritis (%) -> paksa menuju Charging Dock
+BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pulang
+
+# Stasiun pengisian tambahan (selain dock spawn Alpha & Beta). Harus walkable di Zone A dan B.
+CHARGING_STATIONS = [(22, 15), (7, 17), (19, 9), (30, 9), (30, 19)]

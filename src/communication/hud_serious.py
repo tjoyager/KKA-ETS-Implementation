@@ -158,6 +158,9 @@ class SeriousHUD:
         h_formula = mission_mgr.current_heuristic_info.get("formula", "")
         q_count = len(mission_mgr.task_queue)
 
+        bar_a = self._battery_bar(robot_a.battery)
+        bar_b = self._battery_bar(robot_b.battery)
+
         new_text = (
             f" [ WMS FLEET TELEMETRY - {mission_mgr.current_zone} ]             * ONLINE\n"
             f" HEURISTIK: [ {h_name} ] (h = {h_formula})      [H] Ganti\n"
@@ -166,7 +169,7 @@ class SeriousHUD:
             f" --------------------------------------------------------\n"
             f" METRIK SEARCH       | [CYAN] A* (Alpha)  | [AMBER] GBFS (Beta)\n"
             f" --------------------------------------------------------\n"
-            f" Sisa Baterai        | {f'{robot_a.battery:.1f}%'.ljust(18)} | {f'{robot_b.battery:.1f}%'}\n"
+            f" Sisa Baterai        | {bar_a.ljust(18)} | {bar_b}\n"
             f" Biaya Rute (Cost)   | {cost_a.ljust(18)} | {cost_b}\n"
             f" Simpul Eksplorasi   | {nodes_a.ljust(18)} | {nodes_b}\n"
             f" Waktu Komputasi     | {time_a.ljust(18)} | {time_b}\n"
@@ -180,3 +183,11 @@ class SeriousHUD:
         if new_text != self._last_rendered_text:
             self.text_display.text = new_text
             self._last_rendered_text = new_text
+    
+    @staticmethod
+    def _battery_bar(pct: float, width: int = 10) -> str:
+        """Bar baterai teks, contoh: [######----] 60%. Tanda ! muncul saat kritis (<=20%)."""
+        pct = max(0.0, min(100.0, pct))
+        filled = int(round(pct / 100.0 * width))
+        warn = " !" if 0.0 < pct <= 20.0 else ""
+        return f"[{'#' * filled}{'-' * (width - filled)}] {pct:.0f}%{warn}"
