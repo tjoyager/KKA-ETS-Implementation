@@ -14,7 +14,16 @@ Fitur Unggulan:
 - Mode HUD ganda: Serious (WMS Industrial Analytics) vs Gamifikasi (Arcade Time-Attack & Star Rating).
 """
 
+import os
 import sys
+
+# Memastikan root folder aplikasi menjadi working directory aktif
+# (Sangat krusial untuk PyInstaller Standalone Executable dan shortcut Windows)
+if getattr(sys, "frozen", False):
+    os.chdir(os.path.dirname(sys.executable))
+else:
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
 from src.simulation import run_warehouse_simulation
 
 

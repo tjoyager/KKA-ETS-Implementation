@@ -14,6 +14,10 @@ venv.bak/
 .ursina/
 models_compressed/
 
+# PyInstaller builds
+build/
+dist/
+
 # OS and Editor
 .DS_Store
 Thumbs.db
