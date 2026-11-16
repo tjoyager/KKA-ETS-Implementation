@@ -1,196 +1,175 @@
-"""
-hud_gamification.py
-===================
-Panel HUD Mode Gamifikasi (Arcade Style / Logistics Rush).
-Menampilkan elemen Time-Attack (timer stopwatch), akumulasi skor efisiensi,
-combo multiplier, serta sistem rating bintang 1-5 berdasarkan rasio keoptimalan rute.
-"""
+"""V8 arcade HUD.
 
+Cleaner and more elegant than V6, with less clutter and safer text bounds.
+"""
 import time
-import textwrap
-from ursina import Entity, Vec3, color, camera, Text, window
-from src.behavior.mission_manager import MissionManager
-from src.communication.interaction_system import InteractionSystem
+from src.communication.visual_theme import rounded_surface
+from ursina.shaders import unlit_shader
+
+from ursina import Entity, Text, Vec3, camera, color, window
+
 
 class GamificationHUD:
+    BG = color.rgba32(19, 28, 35, 248)
+    EDGE = color.rgba32(67, 92, 103, 220)
+    LINE = color.rgba32(66, 86, 97, 150)
+    TEXT = color.rgb32(234, 242, 243)
+    MUTED = color.rgb32(151, 171, 181)
+    CYAN = color.rgb32(93, 201, 189)
+    AMBER = color.rgb32(231, 177, 101)
+    GREEN = color.rgb32(130, 198, 156)
+    REG = "assets/fonts/Roboto-Regular.ttf"
+    BOLD = "assets/fonts/Roboto-Bold.ttf"
+
     def __init__(self):
         self.container = Entity(parent=camera.ui, enabled=False)
-        
-        self.panel_w, self.panel_h = 0.60, 0.52 
-        
-        self.BG_COLOR = color.rgba32(40, 20, 60, 240)
-        self.LINE_COLOR = color.rgba32(80, 60, 100, 200)
-        self.TEXT_COLOR = color.rgb32(255, 230, 240)
-        self.HEADER_COLOR = color.rgb32(255, 215, 0)
+        self.panel_w = 0.435
+        self.panel_h = 0.70
+        self._last_aspect = -1.0
+        self._last_update = 0.0
 
-        # Background Panel
-        self.bg_panel = Entity(parent=self.container, model='quad', scale=Vec3(self.panel_w, self.panel_h, 1), color=self.BG_COLOR)
-        self.accent_left = Entity(parent=self.container, model='quad', scale=Vec3(0.004, self.panel_h, 1), color=color.rgb32(255, 215, 0))
+        self.bg = self._box(self.BG, 0.01)
+        self.edge = self._box(self.EDGE, 0.012)
+        self.top_rule = self._box(self.AMBER, 0.004)
+        self.eyebrow = self._text("ARCADE MODE", 0.56, self.MUTED, True)
+        self.title = self._text("Logistics rush", 0.88, self.TEXT, True)
+        self.subtitle = self._text("Fast comparison run", 0.60, self.MUTED)
 
-        # Header
-        self.title_text = Text(parent=self.container, text="ARCADE LOGISTICS RUSH", scale=0.85, color=self.HEADER_COLOR, font='assets/fonts/Roboto-Bold.ttf')
-        self.status_text = Text(parent=self.container, text="", scale=0.65, color=self.TEXT_COLOR, line_height=1.2, font='assets/fonts/Roboto-Bold.ttf')
-        
-        # Top Banner Info
-        self.top_info_text = Text(parent=self.container, text="", scale=0.65, color=color.rgb32(255, 255, 255), line_height=1.2, font='assets/fonts/Roboto-Bold.ttf')
+        self.score_k = self._text("Score", 0.56, self.MUTED, True)
+        self.score_v = self._text("0", 1.08, self.TEXT, True)
+        self.score_u = self._text("pts", 0.56, self.AMBER, True)
+        self.sep_a = self._box(self.LINE, 0.0018)
 
-        # --- STRUKTUR TABEL ---
-        self.col_robot = Text(parent=self.container, text="ROBOT", scale=0.6, color=self.HEADER_COLOR, font='assets/fonts/Roboto-Bold.ttf', origin=(-0.5, 0))
-        self.col_bat = Text(parent=self.container, text="BAT", scale=0.6, color=self.HEADER_COLOR, font='assets/fonts/Roboto-Bold.ttf', origin=(0, 0))
-        self.col_step = Text(parent=self.container, text="STEP", scale=0.6, color=self.HEADER_COLOR, font='assets/fonts/Roboto-Bold.ttf', origin=(0, 0))
-        self.col_cost = Text(parent=self.container, text="COST", scale=0.6, color=self.HEADER_COLOR, font='assets/fonts/Roboto-Bold.ttf', origin=(0, 0))
+        self.stats = []
+        for label in ("Elapsed", "Combo", "Rating"):
+            self.stats.append((
+                self._text(label, 0.55, self.MUTED, True),
+                self._text("--", 0.72, self.TEXT, True),
+            ))
 
-        self.rows = []
-        for i in range(2):
-            row = {
-                "robot": Text(parent=self.container, text="", scale=0.65, color=color.white, font='assets/fonts/Roboto-Bold.ttf', origin=(-0.5, 0)),
-                "bat": Text(parent=self.container, text="-", scale=0.65, color=color.white, font='assets/fonts/Roboto-Bold.ttf', origin=(0, 0)),
-                "step": Text(parent=self.container, text="-", scale=0.65, color=color.white, font='assets/fonts/Roboto-Bold.ttf', origin=(0, 0)),
-                "cost": Text(parent=self.container, text="-", scale=0.65, color=color.white, font='assets/fonts/Roboto-Bold.ttf', origin=(0, 0)),
-            }
-            self.rows.append(row)
+        self.sep_b = self._box(self.LINE, 0.0018)
+        self.match_k = self._text("Head to head", 0.56, self.MUTED, True)
+        self.cards = []
+        for title, tint in (("Alpha / A*", self.CYAN), ("Beta / GBFS", self.AMBER)):
+            card = self._box(color.rgba32(24, 34, 48, 228), 0.083)
+            accent = self._box(tint, 0.083)
+            t = self._text(title, 0.64, tint, True)
+            line1 = self._text("Battery --   Cost --", 0.58, self.TEXT)
+            line2 = self._text("Steps --", 0.54, self.MUTED)
+            self.cards.append((card, accent, t, line1, line2))
 
-        # Garis Tabel
-        self.line_vert_1 = Entity(parent=self.container, model='quad', color=self.LINE_COLOR)
-        self.line_vert_2 = Entity(parent=self.container, model='quad', color=self.LINE_COLOR)
-        self.line_vert_3 = Entity(parent=self.container, model='quad', color=self.LINE_COLOR)
-        self.line_h1 = Entity(parent=self.container, model='quad', color=self.LINE_COLOR)
-        self.line_h2 = Entity(parent=self.container, model='quad', color=self.LINE_COLOR)
+        self.sep_c = self._box(self.LINE, 0.0018)
+        self.outcome = self._text("Race not started", 0.60, self.TEXT)
+        self.hint = self._text("G random race  ·  J analysis", 0.54, self.MUTED)
 
-        # Footer
-        self.footer_text = Text(parent=self.container, text="", scale=0.65, color=self.TEXT_COLOR, line_height=1.2, font='assets/fonts/Roboto-Bold.ttf')
-
-        self._last_update_time, self._last_aspect_ratio = 0.0, 0.0
         self.update_layout()
 
+    def _box(self, tint, height):
+        return Entity(parent=self.container, model="quad", shader=unlit_shader, texture=rounded_surface(0.435, height) if height > 0.02 else None, scale=Vec3(0.02, height, 1), color=tint)
+
+    def _text(self, text, scale, tint, bold=False, origin=(-0.5, 0)):
+        return Text(parent=self.container, text=text, origin=origin, scale=scale,
+                    color=tint, font=self.BOLD if bold else self.REG)
+
+    @staticmethod
+    def _set(widget, value):
+        value = str(value)
+        if widget.text != value:
+            widget.text = value
+
+    @staticmethod
+    def _clip(value, limit):
+        value = str(value)
+        return value if len(value) <= limit else value[: limit - 3].rstrip() + "..."
+
     def update_layout(self):
-        aspect = window.aspect_ratio
-        if abs(aspect - self._last_aspect_ratio) < 0.01: return
-        self._last_aspect_ratio = aspect
+        aspect = max(1.0, float(window.aspect_ratio))
+        if abs(aspect - self._last_aspect) < 0.01:
+            return
+        self._last_aspect = aspect
+        w = 0.435 if aspect >= 1.55 else (0.39 if aspect >= 1.25 else 0.35)
+        self.panel_w = w
+        x = -aspect / 2 + 0.018 + w / 2
+        y = 0.016
+        left = x - w / 2 + 0.024
+        inner = w - 0.048
+        top = y + self.panel_h / 2
 
-        # Posisi dasar panel
-        center_x = -aspect / 2.0 + 0.02 + (self.panel_w / 2.0)
-        center_y = 0.22
+        self.bg.position = Vec3(x, y, 0.036)
+        self.bg.scale = Vec3(w, self.panel_h, 1)
+        self.edge.position = Vec3(x, y, 0.037)
+        self.edge.scale = Vec3(w + 0.003, self.panel_h + 0.003, 1)
+        self.top_rule.position = Vec3(left + 0.050, top - 0.010, 0.018)
+        self.top_rule.scale = Vec3(0.100, 0.003, 1)
+        self.eyebrow.position = Vec3(left, top - 0.048, 0.012)
+        self.title.position = Vec3(left, top - 0.084, 0.012)
+        self.subtitle.position = Vec3(left, top - 0.120, 0.012)
 
-        self.bg_panel.position = Vec3(center_x, center_y, 0)
-        self.accent_left.position = Vec3(center_x - self.panel_w / 2.0, center_y, -0.005)
+        self.score_k.position = Vec3(left, top - 0.166, 0.012)
+        self.score_v.position = Vec3(left, top - 0.210, 0.012)
+        self.score_u.position = Vec3(left + 0.180, top - 0.210, 0.012)
+        self.sep_a.position = Vec3(x, top - 0.246, 0.018)
+        self.sep_a.scale = Vec3(inner, 0.0016, 1)
 
-        # Titik Start (Atas Kiri)
-        start_x = center_x - self.panel_w / 2.0 + 0.03
-        start_y = center_y + self.panel_h / 2.0 - 0.02
+        stat_w = inner / 3
+        for i, (k, v) in enumerate(self.stats):
+            sx = left + stat_w * i
+            k.position = Vec3(sx, top - 0.280, 0.012)
+            v.position = Vec3(sx, top - 0.316, 0.012)
 
-        # ==========================================
-        # PENATAAN VERTIKAL (Y-OFFSET)
-        # ==========================================
-        self.title_text.position = Vec3(start_x, start_y, -0.01)
-        self.status_text.position = Vec3(start_x, start_y - 0.05, -0.01)
-        self.top_info_text.position = Vec3(start_x, start_y - 0.13, -0.01)
+        self.sep_b.position = Vec3(x, top - 0.352, 0.018)
+        self.sep_b.scale = Vec3(inner, 0.0016, 1)
+        self.match_k.position = Vec3(left, top - 0.382, 0.012)
+        for i, (card, accent, t, line1, line2) in enumerate(self.cards):
+            cy = top - 0.438 - i * 0.092
+            card.position = Vec3(x, cy, 0.018)
+            card.scale = Vec3(inner, 0.080, 1)
+            accent.position = Vec3(left + 0.003, cy, 0.019)
+            accent.scale = Vec3(0.004, 0.080, 1)
+            t.position = Vec3(left + 0.018, cy + 0.021, 0.012)
+            line1.position = Vec3(left + 0.018, cy - 0.004, 0.012)
+            line2.position = Vec3(left + 0.018, cy - 0.028, 0.012)
 
-        table_start_y = start_y - 0.23
-        row_h = 0.045  # Jarak antar baris diperlebar
-        
-        # ==========================================
-        # PENATAAN HORIZONTAL TABEL (MATEMATIKA PRESISI)
-        # ==========================================
-        # Pembagian area X:
-        # Robot: start_x s/d start_x + 0.16 (Lebar 0.16)
-        # BAT:   start_x + 0.16 s/d start_x + 0.29 (Lebar 0.13)
-        # STEP:  start_x + 0.29 s/d start_x + 0.42 (Lebar 0.13)
-        # COST:  start_x + 0.42 s/d start_x + 0.54 (Lebar 0.12)
-
-        col1_x = start_x                  # Rata kiri (origin -0.5)
-        col2_x = start_x + 0.225          # Titik tengah BAT
-        col3_x = start_x + 0.355          # Titik tengah STEP
-        col4_x = start_x + 0.48           # Titik tengah COST
-
-        self.col_robot.position = Vec3(col1_x, table_start_y, -0.01)
-        self.col_bat.position = Vec3(col2_x, table_start_y, -0.01)
-        self.col_step.position = Vec3(col3_x, table_start_y, -0.01)
-        self.col_cost.position = Vec3(col4_x, table_start_y, -0.01)
-
-        total_table_h = row_h * 2
-        v_line_y = table_start_y - (total_table_h / 2.0)
-        
-        # Garis Vertikal Tabel (Diletakkan di antara teks)
-        self.line_vert_1.position = Vec3(start_x + 0.16, v_line_y, -0.005)
-        self.line_vert_1.scale = Vec3(0.002, total_table_h + 0.03, 1)
-        
-        self.line_vert_2.position = Vec3(start_x + 0.29, v_line_y, -0.005)
-        self.line_vert_2.scale = Vec3(0.002, total_table_h + 0.03, 1)
-        
-        self.line_vert_3.position = Vec3(start_x + 0.42, v_line_y, -0.005)
-        self.line_vert_3.scale = Vec3(0.002, total_table_h + 0.03, 1)
-
-        # Garis Horizontal
-        self.line_h1.position = Vec3(center_x, table_start_y - (row_h / 2.0), -0.005)
-        self.line_h1.scale = Vec3(self.panel_w - 0.04, 0.002, 1)
-        
-        self.line_h2.position = Vec3(center_x, table_start_y - (row_h * 2.5), -0.005)
-        self.line_h2.scale = Vec3(self.panel_w - 0.04, 0.002, 1)
-
-        # Baris Data
-        for i, row in enumerate(self.rows):
-            y_pos = table_start_y - (row_h * (i + 1))
-            row["robot"].position = Vec3(col1_x, y_pos, -0.01)
-            row["bat"].position = Vec3(col2_x, y_pos, -0.01)
-            row["step"].position = Vec3(col3_x, y_pos, -0.01)
-            row["cost"].position = Vec3(col4_x, y_pos, -0.01)
-
-        # Footer
-        footer_y = table_start_y - (row_h * 3.2)
-        self.footer_text.position = Vec3(start_x, footer_y, -0.01)
+        self.sep_c.position = Vec3(x, top - 0.620, 0.018)
+        self.sep_c.scale = Vec3(inner, 0.0016, 1)
+        self.outcome.position = Vec3(left, top - 0.648, 0.012)
+        self.hint.position = Vec3(left, top - 0.680, 0.012)
 
     def set_visible(self, visible: bool):
         self.container.enabled = visible
 
-    def update(self, mission_mgr: MissionManager, interaction_sys: InteractionSystem):
-        if not self.container.enabled: return
+    def update(self, mission_mgr, interaction_sys):
+        if not self.container.enabled:
+            return
         self.update_layout()
-
         now = time.perf_counter()
-        if (now - self._last_update_time < 0.05) and not mission_mgr.race_finished: return
-        self._last_update_time = now
-
-        raw_status = f"STATUS: {interaction_sys.prompt_text}"
-        wrapped_status = textwrap.fill(raw_status, width=55)
-        self.status_text.text = wrapped_status
+        if now - self._last_update < 0.10:
+            return
+        self._last_update = now
 
         elapsed = mission_mgr.race_elapsed_time
-        timer_str = f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}.{int((elapsed * 100) % 100):02d}"
-        stars_str = f"{mission_mgr.star_rating}/5"
-
-        self.top_info_text.text = (
-            f"TIME: {timer_str}\n"
-            f"SCORE: {mission_mgr.score:,} PTS\n"
-            f"COMBO: x{mission_mgr.combo_multiplier}\n"
-            f"RATING MISI: {stars_str}"
+        self._set(self.score_v, f"{mission_mgr.score:,}")
+        stat_values = (
+            f"{int(elapsed // 60):02d}:{int(elapsed % 60):02d}",
+            f"x{mission_mgr.combo_multiplier}",
+            f"{mission_mgr.star_rating}/5",
         )
+        for (_, value), content in zip(self.stats, stat_values):
+            self._set(value, content)
 
-        plan = mission_mgr.dual_plan
-        if plan:
-            cost_a, cost_b = f"{plan.alpha_plan.total_cost:.1f}", f"{plan.beta_plan.total_cost:.1f}"
-            step_a, step_b = f"{mission_mgr.robot_alpha.waypoint_idx}/{mission_mgr.robot_alpha.total_mission_steps}", f"{mission_mgr.robot_beta.waypoint_idx}/{mission_mgr.robot_beta.total_mission_steps}"
-            bat_a, bat_b = f"{mission_mgr.robot_alpha.battery:.0f}%", f"{mission_mgr.robot_beta.battery:.0f}%"
+        plan = getattr(mission_mgr, "dual_plan", None)
+        robots = (mission_mgr.robot_alpha, mission_mgr.robot_beta)
+        costs = (plan.alpha_plan.total_cost, plan.beta_plan.total_cost) if plan else (None, None)
+        for (_, _, _, line1, line2), robot, cost in zip(self.cards, robots, costs):
+            c = f"{cost:.1f}" if cost is not None else "--"
+            self._set(line1, self._clip(f"Battery {robot.battery:.0f}%   ·   Cost {c}", 28))
+            self._set(line2, self._clip(f"Steps {robot.waypoint_idx}/{robot.total_mission_steps}", 28))
+
+        first = mission_mgr.first_to_arrive
+        if first:
+            outcome = f"First arrival: {first}"
+        elif mission_mgr.is_race_active:
+            outcome = "Race in progress"
         else:
-            cost_a, cost_b, step_a, step_b, bat_a, bat_b = "-", "-", "-", "-", "-", "-"
-
-        self.rows[0]["robot"].text = "A* (Alpha)"
-        self.rows[0]["robot"].color = color.rgb32(56, 189, 248) 
-        self.rows[0]["bat"].text = bat_a
-        self.rows[0]["step"].text = step_a
-        self.rows[0]["cost"].text = cost_a
-
-        self.rows[1]["robot"].text = "GBFS (Beta)"
-        self.rows[1]["robot"].color = color.rgb32(251, 146, 60) 
-        self.rows[1]["bat"].text = bat_b
-        self.rows[1]["step"].text = step_b
-        self.rows[1]["cost"].text = cost_b
-
-        first_arrived = mission_mgr.first_to_arrive if mission_mgr.first_to_arrive else "Menuju Target..."
-        efficiency_champ = mission_mgr.overall_efficiency_winner if mission_mgr.race_finished else "Menghitung..."
-
-        self.footer_text.text = (
-            f"Tiba Pertama: {first_arrived}\n"
-            f"Juara Efisiensi: {efficiency_champ}\n"
-            f"Hint: Tekan [G] untuk Balapan Acak!"
-        )
+            outcome = "Race not started"
+        self._set(self.outcome, self._clip(outcome, 34))

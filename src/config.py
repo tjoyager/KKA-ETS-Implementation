@@ -61,26 +61,26 @@ ACTION_PAUSE_DURATION: float = 0.55  # Jeda animasi ambil/taruh kargo (detik)
 # ============================================================================
 # IDENTITAS & WARNA ROBOT DUAL-AGV
 # ============================================================================
-COLOR_ALPHA_PRIMARY = (0, 195, 255)      # Cyan Elektrik
+COLOR_ALPHA_PRIMARY = (110, 149, 144)      # Cyan Elektrik
 COLOR_ALPHA_SECONDARY = (25, 30, 45)     # Dark Slate
 COLOR_ALPHA_TRAIL = (46, 204, 113)       # Hijau Neon (Optimal Path)
 
-COLOR_BETA_PRIMARY = (255, 140, 0)       # Amber / Oranye Terang
+COLOR_BETA_PRIMARY = (176, 132, 84)       # Amber / Oranye Terang
 COLOR_BETA_SECONDARY = (35, 25, 20)      # Dark Bronze
 COLOR_BETA_TRAIL = (231, 76, 60)         # Merah Oranye Api (Sub-optimal Path)
 
 # ============================================================================
 # WARNA & VISUAL RAK (SHELF), DINDING (WALL), & KARGO
 # ============================================================================
-COLOR_SHELF_FRAME = (45, 85, 130)        # Rangka baja biru industrial modern bergradasi
-COLOR_SHELF_BEAM = (245, 130, 32)        # Balok penopang oranye keselamatan (High-visibility)
+COLOR_SHELF_FRAME = (94, 98, 108)        # Rangka baja biru industrial modern bergradasi
+COLOR_SHELF_BEAM = (176, 132, 84)        # Balok penopang oranye keselamatan (High-visibility)
 COLOR_SHELF_TOP = (250, 165, 45)         # Dek palet emas keselamatan atas
 COLOR_SHELF_HOVER = (255, 235, 59)       # Kuning terang saat disorot mouse
 COLOR_SHELF_PICKUP = (0, 230, 118)       # Hijau mint neon untuk titik jemput (Pick-up) - Beda kontras dari Alpha cyan
 COLOR_SHELF_DROPOFF = (224, 64, 251)     # Magenta neon untuk titik antar (Drop-off)
 
-COLOR_WALL = (38, 44, 56)                # Dinding pelindung baja gelap
-COLOR_WALL_TRIM = (245, 185, 25)         # Garis marka kuning keselamatan (Hazard Yellow)
+COLOR_WALL = (50, 50, 54)                # Dinding pelindung baja gelap
+COLOR_WALL_TRIM = (184, 154, 88)         # Garis marka kuning keselamatan (Hazard Yellow)
 
 COLOR_FLOOR_BASE = (32, 38, 48)          # Lantai beton epoksi abu-abu gelap industri
 COLOR_FLOOR_GRID = (64, 76, 96)          # Garis kisi lantai presisi
@@ -92,8 +92,8 @@ COLOR_CARGO_PRIORITY = (255, 205, 30)    # Emas kontainer kargo bernilai tinggi
 # Rintangan Dinding (Wall Obstacles) - Abu-abu beton kontras
 COLOR_WALL = (125, 132, 145)             # Abu-abu beton industrial
 COLOR_WALL_ACCENT = (80, 88, 100)        # Aksen tepi balok dinding
-COLOR_PERIMETER_WALL = (60, 66, 76)      # Dinding pembatas luar arena
-COLOR_GOAL_PAD = (46, 204, 113)          # Hijau Emerald untuk target Goal
+COLOR_PERIMETER_WALL = (78, 76, 74)      # Dinding pembatas luar arena
+COLOR_GOAL_PAD = (116, 177, 124)          # Hijau Emerald untuk target Goal
 
 WALL_HEIGHT: float = 2.0                 # Tinggi balok dinding (rak = 1.0, dinding = 2.0 agar kontras)
 PERIMETER_WALL_HEIGHT: float = 2.4       # Dinding batas luar arena
@@ -135,11 +135,11 @@ MODEL_PATH_CARGO = "assets/models/cargo.obj"
 CAMERA_PRESETS = {
     "isometrik": {
         "pos": (-85.0, 65.0, -65.0),   # Kamera ditarik lebih dekat (Y dan Z dikecilkan)
-        "target": (-20.0, 10.0, 0.0),   # Target digeser jauh ke kiri agar gudang tampak di kanan
+        "target": (-3.0, 0.0, 0.0),     # Center arena between telemetry and operations panels
         "fov": 40,                     # FOV diperkecil untuk efek Zoom In
     },
     "topdown": {
-        "pos": (-10.0, 80.0, -2.0),
+        "pos": (-2.0, 80.0, 0.0),
         "target": (-10.0, 5.0, -5.0),
         "fov": 50,
     },
