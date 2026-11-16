@@ -202,7 +202,7 @@ class MissionManager:
         )
 
         plan = self.dual_plan
-        if not (plan.alpha_plan.leg1.success and plan.beta_plan.leg1.success):
+        if not (plan.alpha_plan.success and plan.beta_plan.success):
             print("[MissionManager] Gagal: Tidak ada rute yang dapat diakses ke rak tersebut.")
             return False
 
@@ -324,19 +324,36 @@ class MissionManager:
         return self.current_heuristic_name
 
     def replan_race(self):
-        """Menghitung ulang rute dual-robot dengan fungsi heuristik yang baru dipilih."""
+        """Update search plans without restarting robots from their spawns.
+
+        ``dual_plan`` remains the full-route, dock-origin comparison shown
+        in the HUD. Active AGVs instead replan their *remaining* mission
+        from their current position, preserving the current cargo phase.
+        """
         if not (self.selected_pickup_shelf and self.selected_dropoff_shelf):
             return
+        if self.race_finished or self.is_transitioning:
+            return
+
         pickup_coord = self.selected_pickup_shelf.shelf_data.coord
         dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord
 
-        pickup_access = self.graph.get_shelf_access_node(pickup_coord, from_coord=SPAWN_ALPHA)
-        dropoff_access = self.graph.get_shelf_access_node(dropoff_coord, from_coord=pickup_access)
+        # Keep the selected access nodes stable during a running delivery.
+        # This avoids silently switching the pickup/dropoff target mid-mission.
+        pickup_access = self.current_pickup_access
+        dropoff_access = self.current_dropoff_access
+        if pickup_access is None:
+            pickup_access = self.graph.get_shelf_access_node(
+                pickup_coord, from_coord=SPAWN_ALPHA
+            )
+        if dropoff_access is None:
+            dropoff_access = self.graph.get_shelf_access_node(
+                dropoff_coord, from_coord=pickup_access
+            )
+        if pickup_access is None or dropoff_access is None:
+            return
 
-        self.current_pickup_access = pickup_access
-        self.current_dropoff_access = dropoff_access
-
-        self.dual_plan = DualPathPlanner.plan_dual_race(
+        plan = DualPathPlanner.plan_dual_race(
             graph=self.graph,
             spawn_alpha=self.robot_alpha.spawn_coord,
             spawn_beta=self.robot_beta.spawn_coord,
@@ -344,24 +361,28 @@ class MissionManager:
             dropoff_access=dropoff_access,
             heuristic=self.current_heuristic_fn,
         )
+        if not (plan.alpha_plan.success and plan.beta_plan.success):
+            return
+        self.dual_plan = plan
+        self.current_pickup_access = pickup_access
+        self.current_dropoff_access = dropoff_access
 
-        plan = self.dual_plan
-        # Jika balapan sedang berjalan dan belum selesai, terapkan pembaruan rute ke robot
-        if self.is_race_active and not self.race_finished and plan.alpha_plan.leg1.success and plan.beta_plan.leg1.success:
-            self.robot_alpha.set_mission_legs(
-                leg1_path=plan.alpha_plan.leg1.path,
-                leg2_path=plan.alpha_plan.leg2.path,
-                on_pickup=self._on_robot_pickup,
-                on_dropoff=self._on_robot_dropoff,
+        if not self.is_race_active or self.mission_type != MissionType.STANDARD_DELIVERY:
+            return
+
+        # Recalculate only remaining legs. Do NOT call set_mission_legs():
+        # that method is for a fresh mission and teleports to waypoint zero.
+        updated_a = self.robot_alpha.replan_for_heuristic(
+            self.graph, self.current_heuristic_fn, pickup_coord, dropoff_coord
+        )
+        updated_b = self.robot_beta.replan_for_heuristic(
+            self.graph, self.current_heuristic_fn, pickup_coord, dropoff_coord
+        )
+        if (updated_a or updated_b) and hasattr(self.scene, "render_exploration_heatmap"):
+            self.scene.render_exploration_heatmap(
+                self.robot_alpha.last_explored_nodes,
+                self.robot_beta.last_explored_nodes,
             )
-            self.robot_beta.set_mission_legs(
-                leg1_path=plan.beta_plan.leg1.path,
-                leg2_path=plan.beta_plan.leg2.path,
-                on_pickup=self._on_robot_pickup,
-                on_dropoff=self._on_robot_dropoff,
-            )
-            if hasattr(self.scene, 'render_exploration_heatmap'):
-                self.scene.render_exploration_heatmap(plan.alpha_visited_nodes, plan.beta_visited_nodes)
 
     def handle_dynamic_obstacle(self, obs_coord: Coord) -> Tuple[bool, bool]:
         """

@@ -15,7 +15,12 @@ from src.behavior.robot_controller import AGVRobot, RobotState
 from src.behavior.mission_manager import MissionManager, DeliveryOrder
 from src.behavior.forklift_controller import ForkliftController
 from src.config import SPAWN_ALPHA, SPAWN_BETA
+from statistics import median
 
+import pytest
+
+
+pytestmark = pytest.mark.usefixtures("ursina_app")
 
 def test_forklift_and_graph_integration():
     print("=== TEST 1: FORKLIFT & GRAPH INTEGRATION ===")
@@ -43,7 +48,22 @@ def test_forklift_and_graph_integration():
     
     assert graph.is_walkable(start_c[0], start_c[1]), "Sel lama (17, 12) harus kembali walkable"
     assert not graph.is_walkable(next_c[0], next_c[1]), "Sel baru (17, 13) harus non-walkable"
-    assert dt2 < 0.5, "Update tetangga lokal harus < 0.5 ms"
+    samples = []
+
+    for _ in range(50):
+        graph.update_forklift_cell(next_c, start_c)
+
+        t0 = time.perf_counter()
+        graph.update_forklift_cell(start_c, next_c)
+
+        samples.append((time.perf_counter() - t0) * 1000)
+
+    median_ms = median(samples)
+    print(f"Median forklift update: {median_ms:.4f} ms")
+
+    assert median_ms < 0.5, (
+        f"Median update {median_ms:.4f} ms melebihi 0.5 ms"
+)
     print("✓ TEST 1 PASSED: Integrasi Forklift & Graf ultra-cepat dan presisi!\n")
 
 

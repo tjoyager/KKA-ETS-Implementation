@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
-from src.cognition.heuristics import manhattan_distance
+from src.cognition.heuristics import manhattan_distance, octile_distance, euclidean_distance
 from src.cognition.warehouse_graph import WarehouseGraph100
 
 Coord = Tuple[int, int]
@@ -48,6 +48,10 @@ class MissionLegs:
     total_cost: float = 0.0
     total_nodes_explored: int = 0
     total_compute_time_ms: float = 0.0
+
+    @property
+    def success(self) -> bool:
+        return self.leg1.success and self.leg2.success and (self.leg3 is None or self.leg3.success)
 
     @property
     def visited_nodes(self) -> List[Coord]:
@@ -118,9 +122,13 @@ def a_star_search(
     """
     Implementasi A* Search pada grid graf 35x25 teroptimasi tinggi.
     Fungsi evaluasi f(n) = g(n) + h(n) dengan prioritas tie-breaking h(n) terkecil.
-    Menjamin rute terpendek dan optimal secara matematis dengan waktu komputasi sub-milidetik.
+    Optimal untuk biaya nonnegatif dan heuristik admissible; waktu bergantung pada peta.
     """
     t_start = time.perf_counter()
+
+    if not graph.is_walkable(*start) or not graph.is_walkable(*goal):
+        return SearchResult(algorithm_name='A* Search', success=False,
+                            execution_time_ms=(time.perf_counter() - t_start) * 1000)
 
     if start == goal:
         t_elapsed = (time.perf_counter() - t_start) * 1000.0
@@ -134,63 +142,46 @@ def a_star_search(
             execution_time_ms=t_elapsed,
         )
 
-    is_manhattan = (heuristic == manhattan_distance)
-    gx, gy = goal
-
-    if is_manhattan:
-        h_start = float(abs(start[0] - gx) + abs(start[1] - gy))
-    else:
-        h_start = heuristic(start, goal)
+    # Scale distance by the cheapest terrain multiplier. Raw distances
+    # overestimate cost when a boost cell costs less than one unit.
+    scale = min(1.0, min(getattr(graph, 'terrain_weights', {}).values(), default=1.0))
+    if scale < 0:
+        raise ValueError("A* requires nonnegative terrain costs")
+    distance = octile_distance if allow_diagonal and heuristic == manhattan_distance else heuristic
+    def estimate(node):
+        value = distance(node, goal)
+        # Match the graph's diagonal constant (1.41421356).
+        if allow_diagonal and distance == euclidean_distance:
+            value = min(value, octile_distance(node, goal))
+        return scale * value
 
     counter = 0
-    open_heap = []
-    # (f_val, h_val, counter, node) -> tie-break dengan h_val terkecil memandu A* langsung ke target
-    heapq.heappush(open_heap, (h_start, h_start, counter, start))
-
-    came_from: Dict[Coord, Coord] = {}
-    g_score: Dict[Coord, float] = {start: 0.0}
-    closed_set: Set[Coord] = set()
-    explored_order: List[Coord] = []
-
+    h_start = estimate(start)
+    open_heap = [(h_start, h_start, counter, start, 0.0)]
+    came_from = {}
+    g_score = {start: 0.0}
+    explored_order = []
     success = False
     final_node = start
-
     while open_heap:
-        current_f, current_h, _, current = heapq.heappop(open_heap)
-
-        if current in closed_set:
-            continue
-
-        closed_set.add(current)
+        _, _, _, current, queued_g = heapq.heappop(open_heap)
+        if queued_g != g_score[current]:
+            continue  # An obsolete entry from a more expensive route.
         explored_order.append(current)
-
         if current == goal:
-            success = True
-            final_node = current
+            success, final_node = True, current
             break
-
-        current_g = g_score[current]
-        # Traversal tetangga menggunakan pra-kalkulasi graf cepat
-        neighbors = graph.get_neighbors(current[0], current[1], allow_diagonal=allow_diagonal)
-
-        for neighbor in neighbors:
-            if hasattr(graph, 'get_movement_cost'):
-                step_cost = graph.get_movement_cost(current, neighbor)
-            else:
-                step_cost = graph.get_step_cost(current, neighbor)
-            tentative_g = current_g + step_cost
-
-            if neighbor not in g_score or tentative_g < g_score[neighbor]:
+        for neighbor in graph.get_neighbors(*current, allow_diagonal=allow_diagonal):
+            step = (graph.get_movement_cost(current, neighbor)
+                    if hasattr(graph, 'get_movement_cost') else graph.get_step_cost(current, neighbor))
+            tentative_g = queued_g + step
+            if tentative_g < g_score.get(neighbor, float('inf')):
+                # Reopening also supports admissible but inconsistent heuristics.
                 g_score[neighbor] = tentative_g
-                if is_manhattan:
-                    h_val = float(abs(neighbor[0] - gx) + abs(neighbor[1] - gy))
-                else:
-                    h_val = heuristic(neighbor, goal)
-                f_val = tentative_g + h_val
-
                 came_from[neighbor] = current
+                h = estimate(neighbor)
                 counter += 1
-                heapq.heappush(open_heap, (f_val, h_val, counter, neighbor))
+                heapq.heappush(open_heap, (tentative_g + h, h, counter, neighbor, tentative_g))
 
     t_elapsed = (time.perf_counter() - t_start) * 1000.0
 
@@ -206,7 +197,7 @@ def a_star_search(
         success=success,
         path=path,
         cost=cost,
-        nodes_explored=len(closed_set),
+        nodes_explored=len(explored_order),
         explored_order=explored_order,
         execution_time_ms=t_elapsed,
     )
@@ -229,6 +220,10 @@ def greedy_best_first_search(
     Mengeksplorasi simpul dengan rakus ke arah target; cepat namun rentan suboptimal.
     """
     t_start = time.perf_counter()
+
+    if not graph.is_walkable(*start) or not graph.is_walkable(*goal):
+        return SearchResult(algorithm_name='Greedy Best-First Search', success=False,
+                            execution_time_ms=(time.perf_counter() - t_start) * 1000)
 
     if start == goal:
         t_elapsed = (time.perf_counter() - t_start) * 1000.0
@@ -376,7 +371,13 @@ class DualPathPlanner:
             else:
                 full_path.extend(leg3.path)
 
+        complete = leg1.success and leg2.success and (leg3 is None or leg3.success)
+        if not complete:
+            full_path = []  # Never expose disconnected successful fragments as a route.
+
         total_cost = leg1.cost + leg2.cost + (leg3.cost if leg3 else 0.0)
+        if not complete:
+            total_cost = float("inf")
         total_nodes = leg1.nodes_explored + leg2.nodes_explored + (leg3.nodes_explored if leg3 else 0)
         total_time = leg1.execution_time_ms + leg2.execution_time_ms + (leg3.execution_time_ms if leg3 else 0.0)
 

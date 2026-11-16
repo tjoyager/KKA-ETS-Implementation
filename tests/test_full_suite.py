@@ -10,6 +10,10 @@ from src.behavior.robot_controller import AGVRobot, RobotState
 from src.behavior.mission_manager import MissionManager, MissionType
 from src.config import SPAWN_ALPHA, SPAWN_BETA
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("ursina_app")
+
 
 def run_full_suite():
     print("==================================================")
