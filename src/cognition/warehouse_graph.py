@@ -17,6 +17,7 @@ from src.config import (
     GRID_HEIGHT,
     SPAWN_ALPHA,
     SPAWN_BETA,
+    CHARGING_STATIONS,
     DEFAULT_START,
     DEFAULT_GOAL,
     STANDBY_ZONE_MIN,
@@ -115,6 +116,14 @@ class WarehouseGraph100:
             return False
         cell = self.grid[y, x]
         return cell not in (CellType.SHELF_OBSTACLE, CellType.WALL, CellType.FORKLIFT)
+
+    def get_charging_docks(self) -> List[Coord]:
+        """Semua titik pengisian daya aktif: 2 dock spawn + stasiun tambahan yang walkable."""
+        docks: List[Coord] = [self.dock_alpha, self.dock_beta]
+        for c in CHARGING_STATIONS:
+            if c not in docks and self.is_walkable(c[0], c[1]):
+                docks.append(c)
+        return docks
 
     def set_cell(self, x: int, y: int, cell_type: CellType) -> None:
         """Mengatur tipe sel pada koordinat (x, y)."""
