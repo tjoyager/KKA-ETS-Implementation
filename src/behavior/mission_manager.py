@@ -6,8 +6,10 @@ Mengatur siklus hidup misi: seleksi titik jemput (Pick-up), titik antar (Drop-of
 kalkulasi rencana balapan sinkron, pelacakan waktu, sistem skor, dan penentuan pemenang.
 """
 
-from typing import Optional, Tuple
-from ursina import time
+from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional, Set, Tuple
+from ursina import time, camera, color, invoke
 
 from src.config import (
     SPAWN_ALPHA,
@@ -24,6 +26,19 @@ from src.environment.interactive_shelf import InteractiveShelf
 from src.environment.warehouse_scene import WarehouseScene
 
 Coord = Tuple[int, int]
+
+
+class MissionType(Enum):
+    STANDARD_DELIVERY = "Pengantaran Standar (Pick-up -> Drop-off)"
+    INTER_ZONE_TRANSFER = "Transfer Antar-Zona (Menuju Gerbang Zone B)"
+
+
+@dataclass
+class DeliveryOrder:
+    """Representasi satu tiket pesanan pengantaran barang dalam antrean sistem WMS."""
+    order_id: int
+    pickup_shelf: InteractiveShelf
+    dropoff_shelf: InteractiveShelf
 
 
 class MissionManager:
@@ -46,6 +61,8 @@ class MissionManager:
         # State Misi Aktif
         self.selected_pickup_shelf: Optional[InteractiveShelf] = None
         self.selected_dropoff_shelf: Optional[InteractiveShelf] = None
+        self.current_pickup_access: Optional[Coord] = None
+        self.current_dropoff_access: Optional[Coord] = None
         self.dual_plan: Optional[DualRacePlan] = None
 
         # Konfigurasi Heuristik Dinamis
@@ -54,6 +71,11 @@ class MissionManager:
         self.current_heuristic_name = "Manhattan"
         self.current_heuristic_info = AVAILABLE_HEURISTICS["Manhattan"]
         self.current_heuristic_fn = AVAILABLE_HEURISTICS["Manhattan"]["fn"]
+
+        # Multi-Stage & Zone Transfer (Fitur 2)
+        self.mission_type = MissionType.STANDARD_DELIVERY
+        self.current_zone = "Zone A"
+        self.is_transitioning = False
 
         self.is_race_active: bool = False
         self.race_start_time: Optional[float] = None
@@ -74,6 +96,37 @@ class MissionManager:
         self.missions_completed: int = 0
         self.rating_explanation: str = "Pilih tugas pertama Anda!"
 
+        # Sistem Antrean Pesanan Misi (Order Task Queue - FIFO)
+        self.task_queue: List[DeliveryOrder] = []
+        self._order_counter: int = 1
+
+        # Rintangan Bergerak Dinamis (User Forklift)
+        self.forklift = None
+        self._last_forklift_threats: Set[Coord] = set()
+
+    def set_forklift(self, forklift):
+        """Mendaftarkan objek Forklift interaktif untuk deteksi ancaman tabrakan real-time."""
+        self.forklift = forklift
+
+    def enqueue_order(
+        self,
+        pickup_shelf: InteractiveShelf,
+        dropoff_shelf: InteractiveShelf,
+    ) -> int:
+        """
+        Menambahkan tiket pesanan baru ke antrean FIFO.
+        Mengembalikan order_id tiket yang dibuat.
+        """
+        order_id = self._order_counter
+        self._order_counter += 1
+        order = DeliveryOrder(
+            order_id=order_id,
+            pickup_shelf=pickup_shelf,
+            dropoff_shelf=dropoff_shelf,
+        )
+        self.task_queue.append(order)
+        return order_id
+
     def dispatch_race(
         self,
         pickup_shelf: InteractiveShelf,
@@ -87,6 +140,8 @@ class MissionManager:
         """
         self.selected_pickup_shelf = pickup_shelf
         self.selected_dropoff_shelf = dropoff_shelf
+        pickup_shelf.mark_as_pickup(True)
+        dropoff_shelf.mark_as_dropoff(True)
 
         # Ambil titik akses lorong terdekat untuk kedua rak
         pickup_coord = pickup_shelf.shelf_data.coord
@@ -94,6 +149,9 @@ class MissionManager:
 
         pickup_access = self.graph.get_shelf_access_node(pickup_coord, from_coord=SPAWN_ALPHA)
         dropoff_access = self.graph.get_shelf_access_node(dropoff_coord, from_coord=pickup_access)
+
+        self.current_pickup_access = pickup_access
+        self.current_dropoff_access = dropoff_access
 
         # Hitung perencanaan rute dual-robot secara konkuren
         self.dual_plan = DualPathPlanner.plan_dual_race(
@@ -123,8 +181,11 @@ class MissionManager:
         # Reset posisi awal robot ke dock sebelum memulai balapan baru
         self.robot_alpha.reset_to_dock()
         self.robot_beta.reset_to_dock()
+        if hasattr(self.scene, 'clear_exploration_heatmap'):
+            self.scene.clear_exploration_heatmap()
 
         # Berikan rute ke Robot Alpha (A*)
+        self.robot_alpha.graph = self.graph
         self.robot_alpha.speed = self.current_speed
         self.robot_alpha.set_mission_legs(
             leg1_path=plan.alpha_plan.leg1.path,
@@ -134,6 +195,7 @@ class MissionManager:
         )
 
         # Berikan rute ke Robot Beta (GBFS)
+        self.robot_beta.graph = self.graph
         self.robot_beta.speed = self.current_speed
         self.robot_beta.set_mission_legs(
             leg1_path=plan.beta_plan.leg1.path,
@@ -141,6 +203,14 @@ class MissionManager:
             on_pickup=self._on_robot_pickup,
             on_dropoff=self._on_robot_dropoff,
         )
+
+        # Visualisasikan Heatmap Komputasi Node Exploration (Fitur 1: A* vs GBFS)
+        alpha_nodes = plan.alpha_visited_nodes
+        beta_nodes = plan.beta_visited_nodes
+        self.robot_alpha.last_explored_nodes = set(alpha_nodes)
+        self.robot_beta.last_explored_nodes = set(beta_nodes)
+        if hasattr(self.scene, 'render_exploration_heatmap'):
+            self.scene.render_exploration_heatmap(alpha_nodes, beta_nodes)
 
         return True
 
@@ -177,6 +247,8 @@ class MissionManager:
 
         self.robot_alpha.reset_to_dock()
         self.robot_beta.reset_to_dock()
+        if hasattr(self.scene, 'clear_exploration_heatmap'):
+            self.scene.clear_exploration_heatmap()
 
     def toggle_pause(self) -> bool:
         """Menjeda atau melanjutkan pergerakan kedua robot."""
@@ -214,6 +286,9 @@ class MissionManager:
         pickup_access = self.graph.get_shelf_access_node(pickup_coord, from_coord=SPAWN_ALPHA)
         dropoff_access = self.graph.get_shelf_access_node(dropoff_coord, from_coord=pickup_access)
 
+        self.current_pickup_access = pickup_access
+        self.current_dropoff_access = dropoff_access
+
         self.dual_plan = DualPathPlanner.plan_dual_race(
             graph=self.graph,
             spawn_alpha=self.robot_alpha.spawn_coord,
@@ -238,6 +313,97 @@ class MissionManager:
                 on_pickup=self._on_robot_pickup,
                 on_dropoff=self._on_robot_dropoff,
             )
+            if hasattr(self.scene, 'render_exploration_heatmap'):
+                self.scene.render_exploration_heatmap(plan.alpha_visited_nodes, plan.beta_visited_nodes)
+
+    def handle_dynamic_obstacle(self, obs_coord: Coord) -> Tuple[bool, bool]:
+        """
+        Memeriksa apakah rintangan baru memotong rute aktif Robot Alpha (A*) dan/atau Robot Beta (GBFS).
+        Jika ya, paksa algoritma masing-masing untuk segera menghitung ulang rute secara real-time.
+        Returns: (alpha_replanned, beta_replanned)
+        """
+        alpha_replanned = False
+        beta_replanned = False
+
+        pickup_coord = self.selected_pickup_shelf.shelf_data.coord if self.selected_pickup_shelf else None
+        dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord if self.selected_dropoff_shelf else None
+
+        if self.is_race_active and not self.race_finished:
+            if self.robot_alpha.is_path_blocked_by(obs_coord):
+                success = self.robot_alpha.recalculate_route(
+                    graph=self.graph,
+                    heuristic_fn=self.current_heuristic_fn,
+                    pickup_shelf_coord=pickup_coord,
+                    dropoff_shelf_coord=dropoff_coord,
+                )
+                if success:
+                    alpha_replanned = True
+
+            if self.robot_beta.is_path_blocked_by(obs_coord):
+                success = self.robot_beta.recalculate_route(
+                    graph=self.graph,
+                    heuristic_fn=self.current_heuristic_fn,
+                    pickup_shelf_coord=pickup_coord,
+                    dropoff_shelf_coord=dropoff_coord,
+                )
+                if success:
+                    beta_replanned = True
+
+        if (alpha_replanned or beta_replanned) and hasattr(self.scene, 'render_exploration_heatmap'):
+            self.scene.render_exploration_heatmap(
+                self.robot_alpha.last_explored_nodes,
+                self.robot_beta.last_explored_nodes,
+            )
+
+        return (alpha_replanned, beta_replanned)
+
+    def handle_dynamic_obstacle_removed(self, removed_coord: Coord):
+        """Ketika rintangan dihapus, memungkinkan kedua robot mengevaluasi kembali rute mereka."""
+        pickup_coord = self.selected_pickup_shelf.shelf_data.coord if self.selected_pickup_shelf else None
+        dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord if self.selected_dropoff_shelf else None
+
+        if self.is_race_active and not self.race_finished:
+            self.robot_alpha.recalculate_route(
+                graph=self.graph,
+                heuristic_fn=self.current_heuristic_fn,
+                pickup_shelf_coord=pickup_coord,
+                dropoff_shelf_coord=dropoff_coord,
+            )
+            self.robot_beta.recalculate_route(
+                graph=self.graph,
+                heuristic_fn=self.current_heuristic_fn,
+                pickup_shelf_coord=pickup_coord,
+                dropoff_shelf_coord=dropoff_coord,
+            )
+            if hasattr(self.scene, 'render_exploration_heatmap'):
+                self.scene.render_exploration_heatmap(
+                    self.robot_alpha.last_explored_nodes,
+                    self.robot_beta.last_explored_nodes,
+                )
+
+    def handle_terrain_modified(self, coord: Coord):
+        """Ketika modifier medan (Tumpahan Oli / Boost Pad) diletakkan atau dihapus."""
+        pickup_coord = self.selected_pickup_shelf.shelf_data.coord if self.selected_pickup_shelf else None
+        dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord if self.selected_dropoff_shelf else None
+
+        if self.is_race_active and not self.race_finished:
+            rep_a = self.robot_alpha.recalculate_route(
+                graph=self.graph,
+                heuristic_fn=self.current_heuristic_fn,
+                pickup_shelf_coord=pickup_coord,
+                dropoff_shelf_coord=dropoff_coord,
+            )
+            rep_b = self.robot_beta.recalculate_route(
+                graph=self.graph,
+                heuristic_fn=self.current_heuristic_fn,
+                pickup_shelf_coord=pickup_coord,
+                dropoff_shelf_coord=dropoff_coord,
+            )
+            if (rep_a or rep_b) and hasattr(self.scene, 'render_exploration_heatmap'):
+                self.scene.render_exploration_heatmap(
+                    self.robot_alpha.last_explored_nodes,
+                    self.robot_beta.last_explored_nodes,
+                )
 
     def trigger_random_mission(self) -> bool:
         """
@@ -265,23 +431,185 @@ class MissionManager:
 
         return self.dispatch_race(pickup_ent, dropoff_ent)
 
+    # =========================================================================
+    # FITUR 2: TRANSFER ANTAR-ZONA (STAGE / MULTI-ZONE TRANSITION)
+    # =========================================================================
+    def dispatch_zone_transfer(self) -> bool:
+        """
+        Meluncurkan balapan menuju Transfer Gate di x=34, y=13 untuk beralih zona.
+        AGV Alpha (A*) vs AGV Beta (GBFS) berpacu menuju gerbang transfer.
+        """
+        if self.is_transitioning:
+            return False
+
+        self.reset_race()
+        self.mission_type = MissionType.INTER_ZONE_TRANSFER
+        gate_target = (33, 13)
+
+        from src.cognition.pathfinding import a_star_search, greedy_best_first_search
+        res_alpha = a_star_search(self.graph, self.robot_alpha.spawn_coord, gate_target, heuristic=self.current_heuristic_fn)
+        res_beta = greedy_best_first_search(self.graph, self.robot_beta.spawn_coord, gate_target, heuristic=self.current_heuristic_fn)
+
+        if not (res_alpha.success and res_beta.success):
+            print("[MissionManager] Gagal: Rute ke Gerbang Transfer terhalang.")
+            return False
+
+        self.robot_alpha.reset_to_dock()
+        self.robot_beta.reset_to_dock()
+        if hasattr(self.scene, 'clear_exploration_heatmap'):
+            self.scene.clear_exploration_heatmap()
+
+        self.robot_alpha.speed = self.current_speed
+        self.robot_alpha.set_mission_legs(
+            leg1_path=res_alpha.path,
+            leg2_path=[],
+            on_pickup=None,
+            on_dropoff=None,
+        )
+
+        self.robot_beta.speed = self.current_speed
+        self.robot_beta.set_mission_legs(
+            leg1_path=res_beta.path,
+            leg2_path=[],
+            on_pickup=None,
+            on_dropoff=None,
+        )
+
+        self.is_race_active = True
+        self.race_finished = False
+        self.race_start_time = time.time()
+        self.race_elapsed_time = 0.0
+        return True
+
+    def execute_zone_transition(self):
+        """Memulai sekuens transisi ruangan antar-zona dengan efek fade-out kamera."""
+        if self.is_transitioning:
+            return
+        self.is_transitioning = True
+        self.is_race_active = False
+
+        self.robot_alpha.is_paused = True
+        self.robot_beta.is_paused = True
+
+        from ursina import camera, color, invoke
+        camera.overlay.color = color.clear
+        camera.overlay.animate_color(color.black, duration=1.0)
+        invoke(self._finish_zone_transition, delay=1.0)
+
+    def _finish_zone_transition(self):
+        """Mengeksekusi regenerasi layout matriks rintangan/rak baru di balik layar hitam dan fade-in."""
+        from ursina import camera, color
+
+        # Beralih antara Zone A dan Zone B
+        if self.current_zone == "Zone A":
+            self.current_zone = "Zone B"
+            new_graph = WarehouseGraph100.generate_zone_b_warehouse()
+        else:
+            self.current_zone = "Zone A"
+            new_graph = WarehouseGraph100.generate_complex_warehouse()
+
+        self.graph = new_graph
+        self.scene.rebuild_for_new_zone(new_graph)
+
+        # Teleportasi robot kembali ke titik Start dock dan isi daya baterai penuh
+        self.robot_alpha.reset_to_dock()
+        self.robot_beta.reset_to_dock()
+        if hasattr(self.scene, 'clear_exploration_heatmap'):
+            self.scene.clear_exploration_heatmap()
+        self.robot_alpha.recharge_full()
+        self.robot_beta.recharge_full()
+
+        self.mission_type = MissionType.STANDARD_DELIVERY
+        self.is_race_active = False
+        self.race_finished = False
+
+        # Fade-In kembali ke tampilan normal
+        camera.overlay.animate_color(color.clear, duration=1.0)
+        self.is_transitioning = False
+        print(f"[MissionManager] Berhasil berpindah ke {self.current_zone}!")
+
     def update(self):
-        """Update loop per frame untuk penghitungan metrik gamifikasi dan deteksi finish."""
+        """Update loop per frame untuk pengecekan ancaman forklift, auto-dispatch antrean, dan gamifikasi."""
+        # 1. Pengecekan Ancaman Rintangan Dinamis Forklift (Collision Avoidance & Replanning)
+        self._check_forklift_collision_threats()
+
+        # 2. Penugasan Otomatis Antrean Pesanan FIFO (Auto-Dispatch Task Queue)
+        if not self.is_transitioning and len(self.task_queue) > 0:
+            alpha_ready = self.robot_alpha.state in (RobotState.IDLE_DOCK, RobotState.FINISHED)
+            beta_ready = self.robot_beta.state in (RobotState.IDLE_DOCK, RobotState.FINISHED)
+            if (not self.is_race_active or self.race_finished) and alpha_ready and beta_ready:
+                next_order = self.task_queue.pop(0)
+                self.dispatch_race(next_order.pickup_shelf, next_order.dropoff_shelf)
+
         if self.is_race_active and not self.is_paused:
             self.race_elapsed_time += time.dt
 
+            # Deteksi pencapaian Transfer Gate untuk transisi ruangan
+            if self.mission_type == MissionType.INTER_ZONE_TRANSFER and not self.is_transitioning:
+                c_alpha = self.robot_alpha.get_current_grid_coord()
+                c_beta = self.robot_beta.get_current_grid_coord()
+                gate_targets = self.graph.transfer_gate_coords | {(33, 12), (33, 13), (33, 14)}
+                if c_alpha in gate_targets or c_beta in gate_targets or self.robot_alpha.state == RobotState.FINISHED or self.robot_beta.state == RobotState.FINISHED:
+                    self.execute_zone_transition()
+                    return
+
             # Cek apakah kedua robot sudah menyelesaikan pergerakan
-            alpha_done = self.robot_alpha.state == RobotState.FINISHED
-            beta_done = self.robot_beta.state == RobotState.FINISHED
+            alpha_done = self.robot_alpha.state in (RobotState.FINISHED, RobotState.DEAD)
+            beta_done = self.robot_beta.state in (RobotState.FINISHED, RobotState.DEAD)
 
             if alpha_done and beta_done and not self.race_finished:
                 self._finalize_race_outcome()
+
+    def _check_forklift_collision_threats(self):
+        """
+        Memeriksa apakah Forklift (atau 1 sel di depannya) memotong rute aktif AGV Alpha atau Beta.
+        Menerapkan edge-triggering dan deteksi perubahan zona ancaman untuk menjaga frame rate 60 FPS
+        (tidak memanggil A* dan GBFS setiap frame, hanya saat sel rute terancam).
+        """
+        if not self.forklift or not self.is_race_active or self.race_finished:
+            return
+
+        threats = self.forklift.get_threatened_coords()
+        if threats == self._last_forklift_threats:
+            return
+
+        self._last_forklift_threats = set(threats)
+
+        pickup_coord = self.selected_pickup_shelf.shelf_data.coord if self.selected_pickup_shelf else None
+        dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord if self.selected_dropoff_shelf else None
+
+        alpha_threatened = any(self.robot_alpha.is_path_blocked_by(tc) for tc in threats)
+        beta_threatened = any(self.robot_beta.is_path_blocked_by(tc) for tc in threats)
+
+        if alpha_threatened:
+            self.robot_alpha.recalculate_route(
+                graph=self.graph,
+                heuristic_fn=self.current_heuristic_fn,
+                pickup_shelf_coord=pickup_coord,
+                dropoff_shelf_coord=dropoff_coord,
+            )
+
+        if beta_threatened:
+            self.robot_beta.recalculate_route(
+                graph=self.graph,
+                heuristic_fn=self.current_heuristic_fn,
+                pickup_shelf_coord=pickup_coord,
+                dropoff_shelf_coord=dropoff_coord,
+            )
+
+        if (alpha_threatened or beta_threatened) and hasattr(self.scene, 'render_exploration_heatmap'):
+            self.scene.render_exploration_heatmap(
+                self.robot_alpha.last_explored_nodes,
+                self.robot_beta.last_explored_nodes,
+            )
 
     def _finalize_race_outcome(self):
         """Menghitung evaluasi komparatif akhir saat balapan selesai."""
         self.race_finished = True
         self.is_race_active = False
         self.missions_completed += 1
+        if hasattr(self.scene, 'clear_exploration_heatmap'):
+            self.scene.clear_exploration_heatmap()
 
         plan = self.dual_plan
         cost_alpha = plan.alpha_plan.total_cost if plan else 1.0

@@ -90,8 +90,10 @@ def run_warehouse_simulation():
             robot_alpha=robot_alpha,
             robot_beta=robot_beta,
         )
+        if scene.forklift:
+            mission_mgr.set_forklift(scene.forklift)
 
-        interaction_sys = InteractionSystem(mission_manager=mission_mgr)
+        interaction_sys = InteractionSystem(mission_manager=mission_mgr, scene=scene)
 
         # 5. Inisialisasi Pengendali UI & HUD Ganda
         ui_ctrl = UIController(

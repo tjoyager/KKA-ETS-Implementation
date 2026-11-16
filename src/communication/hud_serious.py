@@ -8,7 +8,7 @@ jumlah simpul dieksplorasi, waktu eksekusi milidetik, serta analisis bottleneck 
 
 import time
 from typing import Optional
-from ursina import Entity, Vec3, color, camera, Text
+from ursina import Entity, Vec3, color, camera, Text, window
 
 from src.behavior.mission_manager import MissionManager
 from src.communication.interaction_system import InteractionSystem
@@ -25,7 +25,7 @@ class SeriousHUD:
         self.container = Entity(parent=camera.ui, enabled=True)
 
         self.panel_w = 0.54
-        self.panel_h = 0.35
+        self.panel_h = 0.375
 
         # Panel dasar semi-transparan kompak dengan gaya cyber-industrial
         self.bg_panel = Entity(
@@ -156,14 +156,17 @@ class SeriousHUD:
         # Data Heuristik Aktif
         h_name = mission_mgr.current_heuristic_name.upper()
         h_formula = mission_mgr.current_heuristic_info.get("formula", "")
+        q_count = len(mission_mgr.task_queue)
 
         new_text = (
-            f" [ WMS FLEET TELEMETRY ]                      ● ONLINE\n"
+            f" [ WMS FLEET TELEMETRY - {mission_mgr.current_zone} ]             * ONLINE\n"
             f" HEURISTIK: [ {h_name} ] (h = {h_formula})      [H] Ganti\n"
             f" Misi: {pickup_info} -> {dropoff_info}\n"
+            f" Antrean Pesanan (FIFO) : {q_count} Pesanan Tertunda\n"
             f" --------------------------------------------------------\n"
             f" METRIK SEARCH       | [CYAN] A* (Alpha)  | [AMBER] GBFS (Beta)\n"
             f" --------------------------------------------------------\n"
+            f" Sisa Baterai        | {f'{robot_a.battery:.1f}%'.ljust(18)} | {f'{robot_b.battery:.1f}%'}\n"
             f" Biaya Rute (Cost)   | {cost_a.ljust(18)} | {cost_b}\n"
             f" Simpul Eksplorasi   | {nodes_a.ljust(18)} | {nodes_b}\n"
             f" Waktu Komputasi     | {time_a.ljust(18)} | {time_b}\n"

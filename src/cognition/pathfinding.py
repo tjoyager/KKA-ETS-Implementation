@@ -32,6 +32,11 @@ class SearchResult:
     def path_length(self) -> int:
         return len(self.path)
 
+    @property
+    def visited_nodes(self) -> List[Coord]:
+        """Daftar seluruh simpul grid yang dievaluasi/dieksplorasi (closed list)."""
+        return self.explored_order
+
 
 @dataclass
 class MissionLegs:
@@ -43,6 +48,14 @@ class MissionLegs:
     total_nodes_explored: int = 0
     total_compute_time_ms: float = 0.0
 
+    @property
+    def visited_nodes(self) -> List[Coord]:
+        """Akumulasi seluruh simpul yang dieksplorasi di kedua etape misi."""
+        nodes = list(self.leg1.explored_order)
+        if self.leg2 and self.leg2.explored_order:
+            nodes.extend(self.leg2.explored_order)
+        return nodes
+
 
 @dataclass
 class DualRacePlan:
@@ -53,6 +66,16 @@ class DualRacePlan:
     congestion_index: float = 0.0
     cost_delta: float = 0.0
     nodes_delta: int = 0
+
+    @property
+    def alpha_visited_nodes(self) -> Set[Coord]:
+        """Himpunan seluruh simpul unik yang dieksplorasi oleh Robot Alpha (A*)."""
+        return set(self.alpha_plan.visited_nodes)
+
+    @property
+    def beta_visited_nodes(self) -> Set[Coord]:
+        """Himpunan seluruh simpul unik yang dieksplorasi oleh Robot Beta (GBFS)."""
+        return set(self.beta_plan.visited_nodes)
 
 
 def _reconstruct_path(came_from: Dict[Coord, Coord], current: Coord) -> List[Coord]:
@@ -66,12 +89,15 @@ def _reconstruct_path(came_from: Dict[Coord, Coord], current: Coord) -> List[Coo
 
 
 def _calculate_path_cost(graph: WarehouseGraph100, path: List[Coord]) -> float:
-    """Menghitung akumulasi total biaya pergerakan sepanjang jalur."""
+    """Menghitung akumulasi total biaya pergerakan sepanjang jalur (mempertimbangkan bobot medan)."""
     if len(path) < 2:
         return 0.0
     total = 0.0
     for i in range(len(path) - 1):
-        total += graph.get_step_cost(path[i], path[i + 1])
+        if hasattr(graph, 'get_movement_cost'):
+            total += graph.get_movement_cost(path[i], path[i + 1])
+        else:
+            total += graph.get_step_cost(path[i], path[i + 1])
     return total
 
 
@@ -145,7 +171,10 @@ def a_star_search(
         neighbors = graph.get_neighbors(current[0], current[1], allow_diagonal=allow_diagonal)
 
         for neighbor in neighbors:
-            step_cost = graph.get_step_cost(current, neighbor)
+            if hasattr(graph, 'get_movement_cost'):
+                step_cost = graph.get_movement_cost(current, neighbor)
+            else:
+                step_cost = graph.get_step_cost(current, neighbor)
             tentative_g = current_g + step_cost
 
             if neighbor not in g_score or tentative_g < g_score[neighbor]:

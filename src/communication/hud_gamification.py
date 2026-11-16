@@ -7,7 +7,7 @@ combo multiplier, serta sistem rating bintang 1-5 berdasarkan rasio keoptimalan 
 """
 
 import time
-from ursina import Entity, Vec3, color, camera, Text
+from ursina import Entity, Vec3, color, camera, Text, window
 
 from src.behavior.mission_manager import MissionManager
 from src.communication.interaction_system import InteractionSystem
@@ -170,8 +170,8 @@ class GamificationHUD:
             f"Misi Terselesaikan: {mission_mgr.missions_completed} Pengiriman\n"
             f"----------------------------------------------------\n"
             f"STANDING BALAPAN REAL-TIME:\n"
-            f"  [CYAN] AGV Alpha (A*)   : Langkah {step_a} | Cost: {cost_a}\n"
-            f"  [AMBER] AGV Beta (GBFS) : Langkah {step_b} | Cost: {cost_b}\n"
+            f"  [CYAN] AGV Alpha (A*)   : Bat {mission_mgr.robot_alpha.battery:.0f}% | Langkah {step_a} | Cost: {cost_a}\n"
+            f"  [AMBER] AGV Beta (GBFS) : Bat {mission_mgr.robot_beta.battery:.0f}% | Langkah {step_b} | Cost: {cost_b}\n"
             f"----------------------------------------------------\n"
             f"Tiba Pertama di Target: {first_arrived}\n"
             f"Juara Efisiensi Energi : {efficiency_champ}\n"
