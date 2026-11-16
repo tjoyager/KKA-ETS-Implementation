@@ -23,14 +23,6 @@ from src.communication.interaction_system import InteractionSystem
 from src.communication.ui_controller import UIController
 from src.config import SPAWN_ALPHA, SPAWN_BETA, CAMERA_PRESETS
 
-
-@pytest.fixture(scope="module")
-def ursina_app():
-    """Fixture inisialisasi Ursina headless untuk testing 3D scene graph."""
-    app = Ursina(headless=True)
-    yield app
-
-
 def test_camera_mode_cycle(ursina_app):
     """Memverifikasi urutan siklus kamera: Isometrik -> Topdown -> POV Alpha -> POV Beta -> Isometrik."""
     graph = WarehouseGraph100(10, 10)
@@ -114,29 +106,29 @@ def test_ui_controller_pov_indicators_and_input(ursina_app):
     ui_ctrl = UIController(mission_manager=mgr, interaction_system=interaction_sys, scene=scene_obj)
 
     # Awal: Isometrik
-    assert ui_ctrl.btn_cam.text == "[C] Isometrik"
+    assert ui_ctrl.btn_cam.text == "Camera [C]"
 
     # Tekan 'c' -> Top-Down
     ui_ctrl.handle_input('c')
     assert scene_obj.current_cam_mode == "topdown"
-    assert ui_ctrl.btn_cam.text == "[C] Top-Down"
+    assert ui_ctrl.btn_cam.text == "Top-down [C]"
 
     # Tekan 'c' lagi -> POV Alpha
     ui_ctrl.handle_input('c')
     assert scene_obj.current_cam_mode == "pov_alpha"
-    assert ui_ctrl.btn_cam.text == "[C] POV Alpha"
-    assert "[CAM] DASHCAM AKTIF: AGV ALPHA (A*)" in interaction_sys.prompt_text
+    assert ui_ctrl.btn_cam.text == "POV Alpha [C]"
+    assert "Dashcam active: AGV Alpha" in interaction_sys.prompt_text
     assert camera.parent == r_alpha.visual_body
 
     # Tekan 'f' -> POV Beta
     ui_ctrl.handle_input('f')
     assert scene_obj.current_cam_mode == "pov_beta"
-    assert ui_ctrl.btn_cam.text == "[C] POV Beta"
-    assert "[CAM] DASHCAM AKTIF: AGV BETA (GBFS)" in interaction_sys.prompt_text
+    assert ui_ctrl.btn_cam.text == "POV Beta [C]"
+    assert "Dashcam active: AGV Beta" in interaction_sys.prompt_text
     assert camera.parent == r_beta.visual_body
 
     # Tekan 'f' lagi -> Isometrik (Wrap around)
     ui_ctrl.handle_input('f')
     assert scene_obj.current_cam_mode == "isometrik"
-    assert ui_ctrl.btn_cam.text == "[C] Isometrik"
+    assert ui_ctrl.btn_cam.text == "Camera [C]"
     assert camera.parent == scene

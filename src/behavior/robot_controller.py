@@ -842,6 +842,68 @@ class AGVRobot(Entity):
 
         return False
 
+    def replan_for_heuristic(
+        self,
+        graph: WarehouseGraph100,
+        heuristic_fn,
+        pickup_shelf_coord: Optional[Coord] = None,
+        dropoff_shelf_coord: Optional[Coord] = None,
+    ) -> bool:
+        """Replan the *remaining* mission when H changes, without restarting.
+
+        The active leg is updated from the robot's current grid cell through
+        ``recalculate_route``. Future return routes are updated separately.
+        Crucially this never calls ``set_mission_legs`` or resets position,
+        cargo state, pause timer, callbacks, elapsed time, or completed steps.
+        """
+        if self.state in (RobotState.IDLE_DOCK, RobotState.FINISHED,
+                          RobotState.DEAD, RobotState.CHARGING):
+            return False
+        # An emergency detour must keep heading to its charging station.
+        if getattr(self, "is_critical_battery", False):
+            return False
+
+        search_fn = a_star_search if self.is_alpha else greedy_best_first_search
+        current_state = self.state
+        # Route for the return stage must remain valid even when the user
+        # changes heuristics while cargo is loading/unloading.
+        updated_return = False
+        if current_state in (
+            RobotState.MOVING_TO_PICKUP, RobotState.LOADING_CARGO,
+            RobotState.MOVING_TO_DROPOFF, RobotState.UNLOADING_CARGO,
+        ):
+            dropoff = self.dropoff_access
+            if dropoff is not None and not graph.is_walkable(*dropoff):
+                if dropoff_shelf_coord is not None:
+                    dropoff = graph.get_shelf_access_node(
+                        dropoff_shelf_coord, from_coord=self.get_current_grid_coord()
+                    )
+            if dropoff is not None:
+                future = search_fn(graph, dropoff, self.spawn_coord,
+                                   heuristic=heuristic_fn)
+                if future.success and future.path:
+                    offset = -0.22 if self.is_beta else 0.22
+                    raw = [grid_to_world(x, y, 0.0) for x, y in future.path]
+                    future_waypoints = self._compute_lane_offset(raw, offset)
+                    self.leg3_grid_path = list(future.path)
+                    self.leg3_waypoints = future_waypoints
+                    updated_return = True
+
+        if current_state == RobotState.UNLOADING_CARGO:
+            # Do not interrupt the unloading animation or fire callbacks again.
+            if updated_return:
+                self.replan_count += 1
+            return updated_return
+
+        # recalculate_route already handles moving on leg 1 / leg 2,
+        # loading, and returning from the *current* cell without teleporting.
+        updated_active = self.recalculate_route(
+            graph=graph, heuristic_fn=heuristic_fn,
+            pickup_shelf_coord=pickup_shelf_coord,
+            dropoff_shelf_coord=dropoff_shelf_coord,
+        )
+        return updated_active or updated_return
+
     def recalculate_route(
         self,
         graph: WarehouseGraph100,

@@ -187,13 +187,16 @@ class WarehouseGraph100:
                 if self.is_in_bounds(adj_x, adj_y):
                     affected.add((adj_x, adj_y))
 
-        # Update cache tetangga hanya untuk koordinat yang terdampak
+        # Refresh hanya cache lokal, tanpa pemanggilan is_walkable() berulang.
         dirs_4 = ((0, 1), (0, -1), (1, 0), (-1, 0))
         dirs_diag = ((1, 1), (1, -1), (-1, 1), (-1, -1))
+        grid = self.grid
+        width, height = self.width, self.height
+        blocked = (1, 2, 6)
 
         for coord in affected:
             cx, cy = coord
-            if not self.is_walkable(cx, cy):
+            if grid[cy, cx] in blocked:
                 self._neighbors_4way.pop(coord, None)
                 self._neighbors_8way.pop(coord, None)
                 continue
@@ -201,16 +204,19 @@ class WarehouseGraph100:
             n4 = []
             for dx, dy in dirs_4:
                 tx, ty = cx + dx, cy + dy
-                if self.is_walkable(tx, ty):
+                if 0 <= tx < width and 0 <= ty < height and grid[ty, tx] not in blocked:
                     n4.append((tx, ty))
             self._neighbors_4way[coord] = tuple(n4)
 
             n8 = list(n4)
             for dx, dy in dirs_diag:
                 tx, ty = cx + dx, cy + dy
-                if self.is_walkable(tx, ty):
-                    if self.is_walkable(cx + dx, cy) and self.is_walkable(cx, cy + dy):
-                        n8.append((tx, ty))
+                if not (0 <= tx < width and 0 <= ty < height):
+                    continue
+                if (grid[ty, tx] not in blocked
+                        and grid[cy, tx] not in blocked
+                        and grid[ty, cx] not in blocked):
+                    n8.append((tx, ty))
             self._neighbors_8way[coord] = tuple(n8)
 
     def add_dynamic_obstacle(self, x: int, y: int) -> bool:

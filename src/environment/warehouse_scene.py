@@ -35,8 +35,8 @@ def _create_procedural_grid_texture(resolution: int = 128) -> Texture:
     """
     Tekstur lantai futuristik: Dasar gelap (Dark Slate) dengan garis grid Cyan neon tipis.
     """
-    img = Image.new("RGBA", (resolution, resolution), color=(15, 23, 42, 255)) # Dark Slate 900
-    border_col = (0, 229, 255, 120) # Cyan neon transparan
+    img = Image.new("RGBA", (resolution, resolution), color=(64, 62, 58, 255)) # Dark Slate 900
+    border_col = (96, 92, 84, 235) # Cyan neon transparan
 
     for i in range(resolution):
         for w in (0, 1, resolution - 2, resolution - 1):
@@ -82,7 +82,7 @@ class WarehouseScene(Entity):
         )
         self.loading_title = Text(
             parent=self.loading_backdrop, text="MEMUAT ARENA 35x25...", position=Vec3(0, 0.08, -0.01),
-            scale=1.5, color=color.rgb32(0, 229, 255), origin=(0, 0), font='assets/fonts/Roboto-Bold.ttf'
+            scale=1.5, color=color.rgb32(110, 149, 144), origin=(0, 0), font='assets/fonts/Roboto-Bold.ttf'
         )
         self.loading_status = Text(
             parent=self.loading_backdrop, text="Inisialisasi Sistem Renderer...", position=Vec3(0, -0.02, -0.01),
@@ -94,7 +94,7 @@ class WarehouseScene(Entity):
         )
         self.loading_bar_fill = Entity(
             parent=self.loading_bar_bg, model='quad', position=Vec3(-0.5, 0, -0.01),
-            scale=Vec3(0.01, 1, 1), origin=(-0.5, 0), color=color.rgb32(0, 229, 255),
+            scale=Vec3(0.01, 1, 1), origin=(-0.5, 0), color=color.rgb32(110, 149, 144),
         )
 
         self._async_loader = self._build_scene_coroutine()
@@ -162,7 +162,7 @@ class WarehouseScene(Entity):
         self._update_progress("Membangun Dinding Luar & Sekat Partisi...", 0.82)
         
         # Warna Dinding Modern: Abu-abu Beton Gelap
-        wall_color_modern = color.rgb32(35, 42, 52) 
+        wall_color_modern = color.rgb32(53, 69, 77) 
         trim_color_modern = color.rgb32(80, 90, 110)
 
         self.static_walls_parent = Entity(color=wall_color_modern, shader=lit_with_shadows_shader)
@@ -173,7 +173,7 @@ class WarehouseScene(Entity):
         arena_h = GRID_HEIGHT + 2
         wall_h = PERIMETER_WALL_HEIGHT
         wall_t = 0.5
-        col_perim = color.rgb32(25, 30, 38) # Dinding perimeter lebih gelap
+        col_perim = color.rgb32(46, 60, 67) # Dinding perimeter lebih gelap
 
         Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)
         Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, -arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)
@@ -259,20 +259,20 @@ class WarehouseScene(Entity):
     # =========================================================================
     def _setup_lighting(self):
         """Pencahayaan 3D industrial modern."""
-        window.color = color.rgb32(30, 41, 59)  # Background luar sangat gelap
+        window.color = color.rgb32(24, 34, 40)  # Background luar sangat gelap
 
         # Cahaya ambient biru redup (membuat bayangan tidak hitam pekat)
-        self.ambient = AmbientLight(color=color.rgba(0.15, 0.20, 0.30, 1.0))
+        self.ambient = AmbientLight(color=color.rgba(0.43, 0.46, 0.48, 1.0))
 
         # Cahaya utama putih bersih (seperti lampu sorot pabrik modern)
         self.sun = DirectionalLight(shadow_map_resolution=Vec2(2048, 2048), shadows=True)
-        self.sun.color = color.rgba(1.0, 1.0, 1.0, 1.0)
+        self.sun.color = color.rgba(0.98, 0.95, 0.90, 1.0)
         self.sun.position = Vec3(-20, 40, -20)
         self.sun.look_at(Vec3(0, 0, 0))
 
         # Fill light lembut
         fill = DirectionalLight(shadows=False)
-        fill.color = color.rgba(0.20, 0.24, 0.32, 1.0)
+        fill.color = color.rgba(0.25, 0.30, 0.34, 1.0)
         fill.look_at(Vec3(0.6, -0.8, 0.6))
 
         lit_with_shadows_shader.default_input['shadow_bias'] = 0.001
@@ -299,7 +299,7 @@ class WarehouseScene(Entity):
             model='cube',
             position=pos_a - Vec3(0, 0.015, 0),
             scale=Vec3(1.35, 0.065, 1.5),
-            color=color.rgba32(0, 195, 255, 175),
+            color=color.rgba32(110, 149, 144, 165),
         )
         # Menara charger stasiun Alpha di belakang robot
         Entity(
@@ -314,7 +314,7 @@ class WarehouseScene(Entity):
             model='cube',
             position=pos_b - Vec3(0, 0.015, 0),
             scale=Vec3(1.35, 0.065, 1.5),
-            color=color.rgba32(255, 140, 0, 175),
+            color=color.rgba32(176, 132, 84, 165),
         )
         # Menara charger stasiun Beta di belakang robot
         Entity(
@@ -329,7 +329,7 @@ class WarehouseScene(Entity):
             text="UNIFIED TWIN DOCK\n[ A* SEARCH  |  GBFS ]",
             position=mid_pos + Vec3(0, 2.1, -0.75),
             scale=1.45,
-            color=color.rgb32(0, 229, 255),
+            color=color.rgb32(110, 149, 144),
             billboard=True,
             origin=(0, 0),
             font='assets/fonts/Roboto-Bold.ttf',
@@ -363,12 +363,12 @@ class WarehouseScene(Entity):
 
     def _build_transfer_gate(self):
         pos_gate = grid_to_world(34, 13, 0.0)
-        Entity(model='cube', position=pos_gate + Vec3(0, 0.04, 0), scale=Vec3(1.2, 0.07, 3.4), color=color.rgba32(0, 229, 255, 200))
+        Entity(model='cube', position=pos_gate + Vec3(0, 0.04, 0), scale=Vec3(1.2, 0.07, 3.4), color=color.rgba32(110, 149, 144, 175))
         Entity(model='cube', position=pos_gate + Vec3(0.25, 1.8, -1.75), scale=Vec3(0.6, 3.6, 0.6), color=color.rgb32(28, 38, 54), shader=lit_with_shadows_shader)
         Entity(model='cube', position=pos_gate + Vec3(0.25, 1.8, 1.75), scale=Vec3(0.6, 3.6, 0.6), color=color.rgb32(28, 38, 54), shader=lit_with_shadows_shader)
-        Entity(model='cube', position=pos_gate + Vec3(0.25, 3.6, 0), scale=Vec3(0.7, 0.6, 4.1), color=color.rgb32(0, 229, 255))
-        Entity(model='cube', position=pos_gate + Vec3(0.25, 1.8, 0), scale=Vec3(0.08, 3.2, 3.1), color=color.rgba32(0, 229, 255, 95))
-        Text(text="TRANSFER GATE\n>>> ZONE B >>>", position=pos_gate + Vec3(0, 4.4, 0), scale=1.5, color=color.rgb32(0, 229, 255), billboard=True, origin=(0, 0), font='assets/fonts/Roboto-Bold.ttf')
+        Entity(model='cube', position=pos_gate + Vec3(0.25, 3.6, 0), scale=Vec3(0.7, 0.6, 4.1), color=color.rgb32(110, 149, 144))
+        Entity(model='cube', position=pos_gate + Vec3(0.25, 1.8, 0), scale=Vec3(0.08, 3.2, 3.1), color=color.rgba32(110, 149, 144, 74))
+        Text(text="TRANSFER GATE\n>>> ZONE B >>>", position=pos_gate + Vec3(0, 4.4, 0), scale=1.5, color=color.rgb32(110, 149, 144), billboard=True, origin=(0, 0), font='assets/fonts/Roboto-Bold.ttf')
 
     def _setup_camera(self):
         camera.fov = CAMERA_PRESETS["isometrik"]["fov"]
@@ -664,8 +664,8 @@ class WarehouseScene(Entity):
             shelf_ent = InteractiveShelf(shelf_data=sdata, visual_entity=vis_ent)
             self.interactive_shelves[sdata.coord] = shelf_ent
 
-        wall_color_modern = color.rgb32(35, 42, 52) 
-        trim_color_modern = color.rgb32(245, 185, 25)
+        wall_color_modern = color.rgb32(53, 69, 77) 
+        trim_color_modern = color.rgb32(143, 161, 166)
 
         self.static_walls_parent = Entity(color=wall_color_modern, shader=lit_with_shadows_shader)
         self.static_walls_parent.cast_shadows = True
@@ -673,7 +673,7 @@ class WarehouseScene(Entity):
 
         arena_w, arena_h = GRID_WIDTH + 2, GRID_HEIGHT + 2
         wall_h, wall_t = PERIMETER_WALL_HEIGHT, 0.5
-        col_perim = color.rgb32(25, 30, 38)
+        col_perim = color.rgb32(46, 60, 67)
         internal_wall_h = WALL_HEIGHT
 
         Entity(parent=self.static_walls_parent, model='cube', position=Vec3(0, wall_h / 2, arena_h / 2), scale=Vec3(arena_w, wall_h, wall_t), color=col_perim)

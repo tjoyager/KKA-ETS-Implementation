@@ -15,6 +15,9 @@ from src.behavior.mission_manager import MissionManager
 from src.behavior.forklift_controller import ForkliftController
 from src.config import SPAWN_ALPHA, SPAWN_BETA
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("ursina_app")
 
 def test_node_exploration_tracking():
     print("=== TEST 1: NODE EXPLORATION TRACKING (A* VS GBFS) ===")
