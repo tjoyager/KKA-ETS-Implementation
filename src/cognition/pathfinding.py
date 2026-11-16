@@ -301,6 +301,30 @@ def greedy_best_first_search(
         execution_time_ms=t_elapsed,
     )
 
+def find_nearest_dock(
+    graph: WarehouseGraph100,
+    start: Coord,
+    docks: List[Coord],
+    heuristic: HeuristicFunc = manhattan_distance,
+    use_astar: bool = True,
+    allow_diagonal: bool = False,
+) -> Optional[Tuple[Coord, SearchResult]]:
+    """
+    Mencari Charging Dock dengan biaya rute (g) terkecil dari posisi `start`.
+    Menjalankan pencarian ke setiap dock lalu memilih hasil ber-cost terendah.
+    use_astar=True memakai A* (rute optimal), False memakai GBFS.
+    Mengembalikan (koordinat_dock, SearchResult), atau None jika tidak ada dock terjangkau.
+    """
+    search_fn = a_star_search if use_astar else greedy_best_first_search
+    best_dock: Optional[Coord] = None
+    best_res: Optional[SearchResult] = None
+    for dock in docks:
+        res = search_fn(graph, start, dock, heuristic, allow_diagonal)
+        if res.success and (best_res is None or res.cost < best_res.cost):
+            best_dock, best_res = dock, res
+    if best_res is None or best_dock is None:
+        return None
+    return best_dock, best_res
 
 # ============================================================================
 # PERENCANA RUTE KONKUREN DUAL-ROBOT (DUAL PATH PLANNER)
