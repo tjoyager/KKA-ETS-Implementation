@@ -1,0 +1,87 @@
+name: Build & Release Standalone Executables
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-binary:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            archive_name: KKA-Warehouse-Sim-linux-x64.tar.gz
+          - os: windows-latest
+            platform: windows-x64
+            archive_name: KKA-Warehouse-Sim-windows-x64.exe
+          - os: macos-latest
+            platform: macos-arm64
+            archive_name: KKA-Warehouse-Sim-macos.zip
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies & PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build standalone bundle via PyInstaller
+        run: pyinstaller --clean --noconfirm packaging/kka_sim.spec
+
+      - name: Package Linux binary
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release-artifacts
+          tar -czvf release-artifacts/${{ matrix.archive_name }} -C dist kka-warehouse-sim
+
+      - name: Package Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release-artifacts | Out-Null
+          Copy-Item dist/kka-warehouse-sim.exe release-artifacts/${{ matrix.archive_name }}
+
+      - name: Package macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p release-artifacts
+          ditto -c -k --sequesterRsrc --keepParent dist/KKA-Warehouse-Sim.app release-artifacts/${{ matrix.archive_name }}
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}-bundle
+          path: release-artifacts/${{ matrix.archive_name }}
+
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: artifacts/*

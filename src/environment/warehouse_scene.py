@@ -209,7 +209,8 @@ class WarehouseScene(Entity):
         # TAHAP 2: SPAWN VISUAL RAK 3D (.OBJ BERTEKSTUR) & COLLIDERS
         # =====================================================================
         self._update_progress("Menyiapkan Model 3D Rak & Aset...", 0.18)
-        from src.config import MODEL_PATH_SHELF_EMPTY, MODEL_PATH_SHELF_OCCUPIED
+        shelf_empty_model = AssetLoader.get_shelf_empty_model()
+        shelf_occupied_model = AssetLoader.get_shelf_occupied_model()
         self.static_racks_parent = Entity()
         yield
 
@@ -225,7 +226,7 @@ class WarehouseScene(Entity):
                 # 1. Model visual 3D bertekstur (empty vs occupied) dengan bayangan
                 vis_ent = Entity(
                     parent=self.static_racks_parent,
-                    model=MODEL_PATH_SHELF_OCCUPIED if sdata.has_cargo else MODEL_PATH_SHELF_EMPTY,
+                    model=shelf_occupied_model if sdata.has_cargo else shelf_empty_model,
                     position=world_pos,
                     scale=Vec3(0.88, 1.0, 0.88),
                     shader=lit_with_shadows_shader,

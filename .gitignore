@@ -19,3 +19,10 @@ models_compressed/
 Thumbs.db
 .vscode/
 .idea/
+
+# Packaging / Distribution artifacts
+build/
+dist/
+*.egg-info/
+*.spec.bak
+

@@ -7,7 +7,7 @@ sekaligus siap merender model kompleks (.obj / .gltf) secara native jika tersedi
 """
 
 import os
-from typing import Optional
+from pathlib import Path
 
 from src.config import (
     MODEL_PATH_AGV,
@@ -17,6 +17,8 @@ from src.config import (
     MODEL_PATH_SHELF_OCCUPIED,
     MODEL_PATH_CARGO,
     MODEL_PATH_DOCK,
+    get_cache_root,
+    get_resource_root,
 )
 
 
@@ -32,18 +34,21 @@ class AssetLoader:
     def _ensure_cache_dirs(cls):
         """Membuat direktori cache model_compressed agar Ursina dapat menyimpan .bam tanpa error."""
         if not cls._checked_cache_dir:
-            os.makedirs("models_compressed/assets/models", exist_ok=True)
+            try:
+                (get_cache_root() / "assets" / "models").mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
             cls._checked_cache_dir = True
 
     @classmethod
     def load_model_safe(cls, model_path: str, fallback_model_name: str = "cube") -> str:
         """
-        Memeriksa ketersediaan berkas model 3D eksternal.
-        Mengembalikan path string berkas jika berkas ada dan valid,
+        Memeriksa ketersediaan berkas model 3D eksternal terhadap CWD maupun RESOURCE_ROOT.
+        Mengembalikan path string relatif untuk Ursina jika berkas ada dan valid,
         atau fallback_model_name primitif jika berkas tidak ditemukan.
         """
         cls._ensure_cache_dirs()
-        if os.path.exists(model_path):
+        if os.path.exists(model_path) or (get_resource_root() / model_path).exists():
             return model_path
         return fallback_model_name
 

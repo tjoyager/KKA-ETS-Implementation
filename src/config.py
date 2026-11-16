@@ -7,7 +7,51 @@ palet warna robot & tema, rintangan dinding (wall obstacles),
 preset kamera yang disesuaikan, serta parameter rendering visual offset.
 """
 
+import os
+import sys
+import tempfile
+from pathlib import Path
 from typing import Tuple
+
+
+def get_resource_root() -> Path:
+    """
+    Mengembalikan direktori akar aset aplikasi agar berfungsi baik di repositori lokal,
+    instalasi paket Python (uvx/pipx/wheel), container Docker, maupun binary PyInstaller.
+    """
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS)
+    return Path(__file__).resolve().parent.parent
+
+
+def get_cache_root() -> Path:
+    """
+    Mengembalikan direktori cache model terkompresi (.bam) yang dijamin dapat ditulisi.
+    Memakai ./models_compressed saat dijalankan dari checkout repositori yang writable,
+    atau direktori cache pengguna/sistem saat dijalankan sebagai paket terinstal/frozen.
+    """
+    override = os.environ.get("KKA_CACHE_DIR")
+    if override:
+        return Path(override)
+
+    resource_root = get_resource_root()
+    is_frozen = getattr(sys, "frozen", False)
+    in_site_packages = any(part in ("site-packages", "dist-packages") for part in resource_root.parts)
+
+    if not is_frozen and not in_site_packages and os.access(resource_root, os.W_OK):
+        return resource_root / "models_compressed"
+
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    base_cache = Path(xdg_cache) if xdg_cache else (Path.home() / ".cache")
+    candidate = base_cache / "kka-warehouse-sim" / "models_compressed"
+    try:
+        candidate.mkdir(parents=True, exist_ok=True)
+        if os.access(candidate, os.W_OK):
+            return candidate
+    except OSError:
+        pass
+
+    return Path(tempfile.gettempdir()) / "kka-warehouse-sim" / "models_compressed"
 
 # ============================================================================
 # DIMENSI GRID & KOORDINAT DUNIA 3D (SKALA 35x25)

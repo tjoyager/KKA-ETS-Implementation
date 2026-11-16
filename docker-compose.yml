@@ -1,0 +1,32 @@
+services:
+  simulator-browser:
+    image: ghcr.io/tjoyager/kka-ets-implementation:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "6080:6080"
+    environment:
+      - SIM_MODE=browser
+      - SCREEN_RESOLUTION=1366x768x24
+      - KKA_WINDOW_SIZE=1280x720
+      # Set PUBLIC_TUNNEL=1 and VNC_PASSWORD=... to get a public https://... URL across networks:
+      - PUBLIC_TUNNEL=${PUBLIC_TUNNEL:-0}
+      - VNC_PASSWORD=${VNC_PASSWORD:-}
+    # Uncomment if running on Linux with Intel/AMD GPU for hardware acceleration:
+    # devices:
+    #   - /dev/dri:/dev/dri
+
+  simulator-x11:
+    image: ghcr.io/tjoyager/kka-ets-implementation:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["x11"]
+    environment:
+      - SIM_MODE=x11
+      - DISPLAY=${DISPLAY:-:0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/dri:/dev/dri

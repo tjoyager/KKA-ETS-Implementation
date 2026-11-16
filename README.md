@@ -127,9 +127,50 @@ KKA-ETS-Implementation/
 
 ## Instalasi & Menjalankan Program
 
-### Persyaratan Sistem
-- **Python**: Versi 3.9 s.d. 3.12
-- Pustaka: `numpy`, `ursina`
+### Opsi A: Jalankan Langsung Tanpa Clone Repo (Zero-Clone)
+
+#### 1. Docker (Browser Mode — Windows, macOS, Linux)
+Tidak perlu menginstal Python, Ursina, ataupun melakukan `git clone`. Cukup jalankan satu perintah Docker lalu buka browser di **`http://localhost:6080`**:
+
+```bash
+docker run --rm -p 6080:6080 ghcr.io/tjoyager/kka-ets-implementation:latest
+```
+
+Untuk membagikan **link publik `https://...` ke siapa saja di jaringan berbeda** (tanpa perlu install `cloudflared` atau `ngrok` di komputer Anda):
+
+```bash
+docker run --rm -p 6080:6080 -e PUBLIC_TUNNEL=1 -e VNC_PASSWORD=demo123 ghcr.io/tjoyager/kka-ets-implementation:latest
+```
+*(Salin URL `https://....trycloudflare.com` yang tercetak di terminal dan buka dari perangkat/jaringan mana saja.)*
+
+Untuk akselerasi GPU / tampilan jendela native langsung di Linux X11:
+
+```bash
+xhost +local:docker
+docker run --rm \
+  -e SIM_MODE=x11 -e DISPLAY="$DISPLAY" \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  --device /dev/dri:/dev/dri \
+  ghcr.io/tjoyager/kka-ets-implementation:latest
+```
+
+#### 2. Satu Perintah via `uvx` / `pipx` (Native Desktop GPU)
+Jika sudah memiliki `uv` atau `pipx`:
+
+```bash
+uvx --from git+https://github.com/tjoyager/KKA-ETS-Implementation.git kka-sim
+```
+
+#### 3. Standalone Executable (Tanpa Docker & Tanpa Python)
+Unduh rilis biner siap pakai (*Windows `.exe`*, *Linux `.tar.gz`*, atau *macOS `.zip`*) dari halaman **GitHub Releases**, ekstrak jika perlu, lalu jalankan langsung.
+
+---
+
+### Opsi B: Menjalankan dari Source Lokal
+
+#### Persyaratan Sistem
+- **Python**: Versi 3.9 s.d. 3.13
+- Pustaka: `numpy`, `ursina`, `Pillow`
 
 ### Langkah Eksekusi (Windows & Linux)
 1. Aktifkan virtual environment Anda:

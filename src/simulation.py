@@ -9,6 +9,10 @@ Mengintegrasikan seluruh subsistem arsitektur modular dengan siklus pemuatan asi
 4. Separated Colliders untuk raycasting klik mouse presisi tinggi.
 """
 
+import os
+from typing import Tuple
+
+from panda3d.core import getModelPath, loadPrcFileData
 from ursina import Ursina, Entity, window, application
 
 from src.config import (
@@ -23,6 +27,8 @@ from src.config import (
     ALPHA_TRAIL_OFFSET_Y,
     BETA_TRAIL_OFFSET_X,
     BETA_TRAIL_OFFSET_Y,
+    get_cache_root,
+    get_resource_root,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100
 from src.environment.warehouse_scene import WarehouseScene
@@ -32,16 +38,53 @@ from src.communication.interaction_system import InteractionSystem
 from src.communication.ui_controller import UIController
 
 
+def _parse_window_size(default: Tuple[int, int] = (1280, 720)) -> Tuple[int, int]:
+    """Membaca KKA_WINDOW_SIZE (format WxH) jika disetel oleh runner/container."""
+    raw = os.environ.get("KKA_WINDOW_SIZE", "").strip().lower()
+    if "x" in raw:
+        try:
+            w_str, h_str = raw.split("x", 1)
+            w, h = int(w_str), int(h_str)
+            if w >= 640 and h >= 480:
+                return (w, h)
+        except ValueError:
+            pass
+    return default
+
+
+def _configure_runtime_paths():
+    """Mengonfigurasi direktori aset & cache .bam agar portabel di segala metode distribusi."""
+    resource_root = get_resource_root()
+    cache_root = get_cache_root()
+    try:
+        (cache_root / "assets" / "models").mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+
+    application.asset_folder = resource_root
+    application.compressed_models_folder = cache_root
+    model_path = getModelPath()
+    model_path.append_path(str(resource_root.resolve()))
+    assets_dir = resource_root / "assets"
+    if assets_dir.exists():
+        model_path.append_path(str(assets_dir.resolve()))
+
+    if os.environ.get("KKA_DISABLE_AUDIO", "").strip().lower() in ("1", "true", "yes"):
+        loadPrcFileData("", "audio-library-name null")
+
+
 def run_warehouse_simulation():
     """
     Meluncurkan simulator gudang 3D secara langsung tanpa dependensi terminal teks.
     """
+    _configure_runtime_paths()
+
     # 1. Inisialisasi Aplikasi Jendela Ursina
     app = Ursina(
         title="Simulasi Robot Gudang 3D - Dual-AGV Racing (35x25)",
         borderless=False,
         fullscreen=False,
-        size=(1280, 720),
+        size=_parse_window_size(),
     )
     window.fps_counter.enabled = False
     window.exit_button.visible = False

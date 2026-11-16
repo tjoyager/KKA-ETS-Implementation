@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling>=1.21.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "kka-warehouse-sim"
+version = "0.3.2"
+description = "Autonomous 3D Warehouse AGV Simulator (A* vs GBFS) built with Ursina / Panda3D"
+readme = "README.md"
+requires-python = ">=3.9,<3.14"
+dependencies = [
+    "numpy>=1.24.0",
+    "ursina>=6.0.0",
+    "Pillow>=10.0.0",
+]
+
+[project.urls]
+Repository = "https://github.com/tjoyager/KKA-ETS-Implementation"
+
+[project.scripts]
+kka-sim = "src.simulation:run_warehouse_simulation"
+kka-warehouse-sim = "src.simulation:run_warehouse_simulation"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"assets" = "assets"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/assets",
+    "/main.py",
+    "/README.md",
+    "/requirements.txt",
+    "/pyproject.toml",
+]
