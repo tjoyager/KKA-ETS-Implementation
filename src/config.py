@@ -160,6 +160,9 @@ BATTERY_DRAIN_PER_GRID: float = 1.5       # % baterai terkuras per 1 sel grid
 BATTERY_CRITICAL_THRESHOLD: float = 20.0  # Batas kritis (%) -> paksa menuju Charging Dock
 BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pulang
 
+# Stasiun pengisian tambahan (selain dock spawn Alpha & Beta). Harus walkable di Zone A dan B.
+CHARGING_STATIONS = [(22, 15), (7, 17), (19, 9), (30, 9), (30, 19)]
+
 # Pastikan folder assets/fonts ada. Jika Anda tidak mendownload font, 
 # Ursina akan fallback ke font bawaan (tidak akan crash).
 FONT_PATH = 'assets/fonts/Roboto-Regular.ttf' 
