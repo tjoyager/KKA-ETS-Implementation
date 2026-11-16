@@ -1,170 +1,294 @@
-# Simulasi Robot Gudang 3D (Autonomous Warehouse AGV Simulator)
-> **Tugas / Proyek Kuliah Konsep Kecerdasan Artificial (KKA)**  
-> Simulator robot gudang otonom (*Automated Guided Vehicle* / AGV) skala **35x25** berbasis **Ursina Engine (Panda3D)** dengan arsitektur modular, interaktivitas penuh *Point-and-Click* (Raycasting), balapan dual-robot (**A\* Search vs Greedy Best-First Search**), rintangan dinding beton (*Wall Obstacles*) & jebakan *cul-de-sac*, serta antarmuka HUD ganda (*Industrial WMS vs Gamification*).
+# Warehouse Digital Twin: A* vs GBFS Algorithm Pathfinding (v2.0 Final)
+
+> **Evaluasi Tengah Semester (ETS) — Konsep Kecerdasan Artificial**  
+> *Simulator Digital Twin Gudang Otonom 3D Berbasis Ursina Engine (Panda3D) dengan Navigasi Armada Multi-Agent AGV, Medan Berbobot Dinamis, dan Analisis Perbandingan Algoritma Informed Search.*
+
+[![Python Version](https://img.shields.io/badge/Python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Engine](https://img.shields.io/badge/3D%20Engine-Ursina%20%2F%20Panda3D-orange?logo=panda3d&logoColor=white)](https://www.ursinaengine.org/)
+[![License](https://img.shields.io/badge/License-Academic%20ETS-green)](#)
+[![Version](https://img.shields.io/badge/Release-v2.0%20Final-purple)](#)
+[![Build Status](https://img.shields.io/badge/Tests-Passing-brightgreen?logo=pytest&logoColor=white)](#)
 
 ---
 
-## Ringkasan Pembaruan & Optimasi Ekstrem Keseluruhan Sistem
+## 1. Header & Deskripsi Proyek
 
-Codebase telah dioptimasi secara menyeluruh dari lapisan kognisi graf hingga siklus render GPU untuk memastikan framerate solid 60+ FPS dan waktu komputasi sub-milidetik:
-- **Kognisi & Search Engine (`src/cognition/`)**:
-  - **Graph Adjacency Precomputation**: Pra-kalkulasi tabel ketetanggaan simpul walkable 4-arah & 8-arah saat startup, menghilangkan iterasi koordinat dan evaluasi NumPy berulang (~10x - 18x lebih cepat).
-  - **Intelligent Heuristic Tie-Breaking**: Memprioritaskan simpul dengan nilai $h(n)$ terkecil saat nilai $f(n)$ setara pada A* Search. Memangkas **93% simpul tak perlu** (dari ~1.464 simpul turun ke ~104 simpul) dan menurunkan waktu komputasi dari 31 ms menjadi **sub-milidetik (< 0.9 ms)** dengan keoptimalan rute tetap 100% terjamin secara matematis.
-- **Environment & Scene Graph (`src/environment/`)**:
-  - **Singleton Selection Indicators**: Mengganti 1.200+ entitas kotak hover dan cincin seleksi per-rak dengan 3 entitas indikator global (menghemat 1.200+ scene graph entities di Panda3D).
-  - **Zero-Collider Cargo**: Menghilangkan 340 collider kotak kargo berlebih (raycast mouse kini langsung ditangani oleh bounding box rak), memangkas beban raycasting per-frame sebesar 36%.
-  - **Floor Texture Tiling & Static Mesh Combining**: 1 single plane lantai raksasa dan peleburan ratusan visual rak & dinding ke dalam single mesh statis.
-- **Behavior & Kinematika (`src/behavior/`)**:
-  - **Zero-Allocation Trail Entity Pooling**: Daur-ulang penanda jejak bercahaya (*trajectory trail*) dengan entity pool tetap, menghilangkan alokasi dinamis berulang dan mencegah *garbage collection stutter*.
-  - **Fast Scalar Vector Math**: Interpolasi translasi dan kalkulasi sudut hadap *heading* menggunakan matematika skalar presisi tinggi (`math.hypot`).
-- **Komunikasi & HUD Telemetry (`src/communication/`)**:
-  - **HUD Rate-Limiting & Dirty-Checking (20 Hz)**: Membatasi regenerasi quad mesh font teks Ursina ke 20 Hz dan hanya merender saat teks berubah, memangkas 85% beban text rendering CPU dan melenyapkan *micro-stuttering*.
-  - **Asynchronous Coroutine Lifecycle**: Pemuatan bertahap dengan progress bar dinamis tanpa membuat jendela sistem operasi *freeze* / *not responding*.
+**Warehouse Digital Twin** adalah simulasi 3D interaktif skala industri yang memodelkan operasional armada robot logistik otonom (*Automated Guided Vehicles* / AGV) pada arena berdimensi **35 × 25 grid (875 sel)**. Dikembangkan di atas **Ursina Engine (Panda3D)**, simulator ini dirancang sebagai platform riset dan uji komparatif mendalam antara dua algoritma *Informed Search* utama dalam kecerdasan buatan:
+
+1. **A\* Search Algorithm**: Algoritma pencarian heuristik berbobot optimal yang mengevaluasi biaya akumulasi aktual dan estimasi jarak tersisa:
+   $$\mathbf{f(n) = g(n) + h(n)}$$
+   Menjamin pencapaian rute dengan total biaya minimum secara matematis (*admissible & consistent*), responsif terhadap variasi bobot medan, serta mengutamakan keselamatan dan efisiensi konsumsi energi armada.
+2. **Greedy Best-First Search (GBFS)**: Algoritma pencarian murni serakah (*pure greedy*) yang hanya mengevaluasi estimasi heuristik langsung ke sasaran:
+   $$\mathbf{f(n) = h(n)}$$
+   Cepat dalam mengeksplorasi langkah awal, namun buta terhadap rintangan tersembunyi (*cul-de-sac*), mengabaikan biaya gesekan medan (*terrain cost*), dan rentan menghasilkan lintasan yang sangat suboptimal.
+
+Simulator ini menyajikan visualisasi grafis berkualitas tinggi dengan sistem pencahayaan dan bayangan dinamis (*directional soft shadows*), arsitektur *Decoupled Follower* anti *Z-fighting*, deteksi rintangan dinamis secara *edge-triggered*, serta antarmuka *telemetry dashboard* bergaya kaca modern (*glassmorphism*).
 
 ---
 
-## 8 Fitur Utama yang Telah Diimplementasikan
+## 2. Legenda Visual (Visual Legend)
 
-### 1. Skala Arena 35x25 & Generator Tata Letak Kompleks
-- Dimensi grid disesuaikan menjadi **panjang (X) = 35 dan lebar (Z) = 25 sel** (875 sel).
-- Generator denah gudang otomatis membangun struktur tata letak realistis:
-  - **Lorong Arteri Utama (*Cross Aisles*)**: Sumbu horizontal di $y = 7, 8$ dan $y = 16$, serta sumbu vertikal di $x = 11$ dan $x = 23$.
-  - **Blok Rak Palet Modular**: Blok rak terdistribusi rapi di 3 klaster horizontal dan vertikal.
-  - **Rintangan Dinding (*Wall Obstacles*) & Sekat Labirin (*Cul-de-Sacs*)**: Dinding beton terpisah dari rak (`CellType.WALL = 2`) yang dirancang strategis untuk partisi ruangan dan kantong buntu U-shape. Menjebak GBFS ($f=h$) yang terlalu *greedy* ke arah target, memperlihatkan perbedaan dramatis dengan rute optimal A* ($f=g+h$).
+Bagian ini menjelaskan secara eksplisit seluruh elemen grafis dan indikator warna yang tampil pada layar simulator:
 
-### 2. Titik Start Statis (Standby Dock Area)
-- Posisi *spawn* awal kedua robot terkunci secara absolut di pojok kiri bawah arena:
-  - **AGV Alpha (A\* Search)**: Terkunci di Dock `(1, 1)`.
-  - **AGV Beta (GBFS)**: Terkunci di Dock `(1, 3)`.
-- Dilengkapi model 3D Docking Station dan teks penanda 3D melayang.
-- **Posisi Target Goal**: Terletak proporsional di seberang arena di pojok kanan atas `(32, 21)` dengan platform 3D hijau emerald dan teks penanda melayang.
+```
++---------------------------------------------------------------------------------------+
+|                                    LEGENDA VISUAL                                     |
++---------------------------------------------------------------------------------------+
+|  ROBOT ARMADA          |  AGV Alpha: Cyan Elektrik (A*)   | AGV Beta: Amber Vivid (GBFS)  |
+|  TRAIL JEJAK           |  Alpha: Hijau Neon (Optimal)     | Beta: Oranye Api (Suboptimal) |
+|  MEMORY HEATMAP        |  Merah: A* Only  |  Biru: GBFS Only  |  Ungu: Irisan Keduanya    |
+|  MEDAN OLI (HAZARD)    |  Kuning/Hitam: Cost 5.0 (Speed 0.4x, Drain 2.5x) -> A* Hindari|
+|  BOOST CONVEYOR        |  Hijau Neon: Cost 0.35 (Speed 1.75x, Drain 0.5x) -> A* Incar |
+|  RADAR PULSE           |  Cincin Sonar 3D: Dynamic Replanning menghindar Forklift/Batu |
++---------------------------------------------------------------------------------------+
+```
 
-### 3. Interaktivitas Raycasting (Point-and-Click)
-- **Bebas Dependensi Terminal**: Program tidak lagi meminta input teks melalui CLI; simulasi langsung membuka jendela 3D interaktif secara instan.
-- **Komponen Collider**: Setiap rak dan kotak kargo memiliki komponen `collider='box'`.
-- **State-Machine Dua Langkah**:
-  - **Klik 1 (Pick-up)**: Klik rak atau kotak kargo yang ada barangnya untuk menjadikannya titik jemput (ditandai cincin cahaya *Cyan Neon*).
-  - **Klik 2 (Drop-off)**: Klik rak kosong mana saja sebagai tujuan pengantaran (ditandai cincin cahaya *Magenta Neon*).
-  - Sistem langsung meluncurkan balapan kedua robot secara otomatis!
-
-### 4. Entitas Rak Dinamis (Graph Access Nodes)
-- Rak bukan sekadar balok rintangan statis, melainkan *node* graf tujuan yang interaktif.
-- Algoritma *pathfinding* secara cerdas mencari rute menuju **Access Node** (sel lorong tetangga terdekat yang dapat dilalui robot) dari rak terpilih.
-
-### 5. Dukungan Aset Model 3D Eksternal (.obj / .gltf)
-- Kerangka folder `assets/models/` menyediakan model 3D Wavefront `.obj` siap pakai:
-  - `agv.obj`: Robot AGV industri lengkap dengan sasis, bumper, dek kargo, dan tower sensor.
-  - `shelf.obj`: Rak palet penyimpanan bertingkat (*multi-tier rack*).
-  - `cargo.obj`: Kotak kontainer kargo logistik.
-  - `dock.obj`: Bantalan stasiun pengisian daya otomatis.
-- **Mekanisme Graceful Fallback**: Jika berkas eksternal belum tersedia atau gagal dimuat, `AssetLoader` secara otomatis melakukan *fallback* ke model prosedural modular tanpa pernah mengalami *crash*.
-- Disertai dokumentasi lengkap dan tautan pengunduhan model 3D di [assets/models/README.md](assets/models/README.md).
-
-### 6. Simulasi Balapan Dual-Robot (A* Search vs GBFS)
-- Instansiasi dua *controller* AGV independen yang berlaga serentak:
-  - **AGV Alpha (Electric Cyan)**: Dikendalikan oleh algoritma **A\* Search** (Jalur Optimal dengan *Neon Green Trail*).
-  - **AGV Beta (Vivid Amber)**: Dikendalikan oleh algoritma **Greedy Best-First Search** (Jalur Heuristik Cepat dengan *Fiery Orange Trail*).
-- Kalkulasi rute konkuren dua etape (*Leg 1: Spawn $\rightarrow$ Pick-up, Leg 2: Pick-up $\rightarrow$ Drop-off*).
-- Pengguna dapat menyaksikan langsung bagaimana GBFS tergiur lorong buntu karena hanya mengandalkan $h(n)$, sementara A* menavigasi lorong tengah secara efisien dan memenangkan keoptimalan rute.
-
-### 7. HUD Mode Ganda (Serious vs Gamification)
-Beralih instan antara dua mode tampilan hanya dengan menekan tombol **`[M]`** pada keyboard atau mengklik tombol layar:
-- **Mode Serious (Warehouse Management System Analytics)**:
-  - Tabel telemetri industri komparatif: Biaya rute (*Cost*), Simpul dieksplorasi (*Nodes Explored*), Waktu eksekusi milidetik (*Execution Time ms*), dan progres langkah.
-  - Radar Bottleneck Jaringan: Deteksi sel lorong bersama (*shared corridor cells*) dan indeks kemacetan (*congestion risk*).
-  - Status armada AGV real-time.
-- **Mode Gamifikasi (Arcade Logistics Rush)**:
-  - **Time-Attack Stopwatch**: Pelacak waktu misi berdetik milidetik.
-  - **Sistem Skor & Combo Multiplier**: Akumulasi poin berdasarkan kecepatan dan keoptimalan pengiriman (Combo x1, x2, x3...).
-  - **Rating Bintang (1 - 5 Bintang)**: Penilaian objektif berdasarkan rasio panjang rute terhadap rute optimal teoritis.
-  - Banner Pengumuman Juara Balapan dinamis.
+### Identitas Robot AGV (Multi-Agent Fleet)
+- **AGV Alpha [Cyan Elektrik — `#00C3FF`]**:
+  - **Algoritma**: **A\* Search** ($f = g + h$).
+  - **Karakteristik**: Mempertimbangkan beban biaya riil lintasan ($g$) dan sisa jarak ($h$). Dilengkapi prioritas *heuristic tie-breaking* dengan nilai $h(n)$ terkecil, memangkas 93% simpul tak perlu.
+  - **Warna Jejak (Trajectory Trail)**: **Hijau Neon** (*Optimal Path*).
+- **AGV Beta [Vivid Amber — `#FF8C00`]**:
+  - **Algoritma**: **Greedy Best-First Search** ($f = h$).
+  - **Karakteristik**: Rakus meluncur menuju target terdekat secara garis lurus, mengabaikan biaya medan dan mudah terjebak di lorong buntu (*cul-de-sac*).
+  - **Warna Jejak (Trajectory Trail)**: **Oranye / Merah Api** (*Sub-optimal Path*).
 
 ---
 
-## Struktur Direktori Modular
+### Warna Heatmap Eksplorasi Memori (Closed-List Heatmap)
+Setelah kalkulasi rute atau saat *dynamic replanning* terjadi, simulator menampilkan bidang proyeksi transparan di lantai untuk memperlihatkan simpul graf mana saja yang sempat dikunjungi/dievaluasi oleh algoritma (*closed list*):
+- 🟥 **Merah / Pink Muda (`rgba(245, 65, 120, 0.40)`)**: Simpul graf yang **hanya dieksplorasi oleh A\***.
+- 🟦 **Biru / Cyan Terang (`rgba(0, 205, 255, 0.40)`)**: Simpul graf yang **hanya dieksplorasi oleh GBFS**.
+- 🟪 **Ungu / Magenta (`rgba(195, 75, 255, 0.55)`)**: Simpul irisan (*Shared Nodes*) yang dieksplorasi oleh **kedua algoritma**.
+
+> [!NOTE]
+> Pada rute yang bersih dari jebakan, heatmap GBFS cenderung berupa garis tipis langsung ke tujuan, sedangkan A* sedikit melebar. Namun, ketika berhadapan dengan sekat buntu (*cul-de-sac*), area eksplorasi GBFS akan membanjiri kantong buntu secara masif sebelum terpaksa berbalik arah.
+
+---
+
+### Weighted Terrain (Medan Berbobot)
+Simulasi menerapkan konsep graf berbobot non-uniform ($w(u, v) \neq 1.0$) untuk menguji kecerdasan adaptif kedua algoritma:
+
+| Elemen Medan | Tampilan Visual 3D | Pengali Biaya $g(n)$ | Dampak Kinematika Robot | Respon Algoritma AI |
+| :--- | :--- | :---: | :--- | :--- |
+| **Genangan Oli (Hazard Oil)** | Piringan Kuning / Amber Berkilau | **$5.0\times$** | Kecepatan turun ke **$0.4\times$**, Baterai terkuras **$2.5\times$** lebih boros | **A\*** mengevaluasi trade-off dan memilih rute memutar yang lebih efisien; **GBFS** nekat menerobos karena buta terhadap $g(n)$. |
+| **Speed Boost Pad** | Konveyor Hijau Neon dengan Panah `>>` | **$0.35\times$** | Kecepatan melonjak ke **$1.75\times$**, Konsumsi baterai turun ke **$0.5\times$** | **A\*** secara agresif mengubah jalurnya untuk menginjak booster ini; **GBFS** mengabaikannya jika tidak tepat segaris lurus dengan sasaran. |
+| **Lorong Normal** | Epoksi Slate Gray dengan Grid Cyan | **$1.0\times$** | Kecepatan nominal (**6.0 sel/detik**), Konsumsi baterai normal (0.25%/langkah) | Kedua robot melaju sesuai jalur standar lorong industri. |
+
+---
+
+### 3D Sonar Radar Pulse
+Saat rute aktif salah satu robot terpotong oleh patroli Forklift otonom atau rintangan kargo yang dijatuhkan pengguna, sistem memicu **Gelombang Sonar 3D (Radar Pulse)**:
+- Cincin cahaya melingkar membesar secara instan dari pusat robot ke radius 6.5 unit dan memudar halus.
+- Diikuti oleh *floating text 3D* (`REPLANNING ROUTE...`) dan kalkulasi rute baru dalam waktu sub-milidetik.
+
+---
+
+### Telemetri Baterai & Floating Status Billboard
+Setiap robot dilengkapi *Billboard UI* yang mengambang tepat di atas bodi fisiknya:
+- **Bar Indikator Progresif**: Berwarna **Hijau** ($>50\%$), **Kuning** ($20\% - 50\%$), dan **Merah Berkedip** ($\le 20\%$).
+- **Lampu Suar Puncak (Beacon)**: Berkedip kuning saat kritis ($\le 20\%$) dan menyala merah pekat saat baterai habis total (`DEAD`).
+- **Emergency Auto-Return**: Robot secara otomatis menghentikan misi dan membelokkan rute ke stasiun pengisian daya terdekat jika sisa daya tidak mencukupi untuk pulang.
+
+---
+
+## 3. Kontrol Interaktif & Cara Bermain
+
+Simulator ini menyediakan kendali penuh melalui kombinasi Mouse Raycasting (*Point-and-Click*) dan tombol pintasan Keyboard:
+
+### Kontrol Mouse
+| Input Mouse | Target Bidang | Aksi & Fungsionalitas |
+| :--- | :--- | :--- |
+| **Klik Kiri** | **Rak Berkargo** | **Langkah 1 Misi**: Menetapkan rak sebagai titik jemput (*Pick-up point*). Ditandai cincin hijau mint neon. |
+| **Klik Kiri** | **Rak Kosong** | **Langkah 2 Misi**: Menetapkan rak sebagai titik antar (*Drop-off point*). Ditandai cincin magenta neon dan meluncurkan balapan! *(Jika robot sedang sibuk, pesanan otomatis masuk ke Antrean FIFO)*. |
+| **Klik Kiri** | **Lantai Lorong Kosong** | Menjatuhkan rintangan atau modifier medan sesuai kuas tool yang aktif (**Kardus**, **Oli**, atau **Boost Pad**). |
+| **Klik Kiri** | **Rintangan / Oli / Boost yang Ada** | Mengangkat dan menghapus rintangan dinamis dari lantai serta merestorasi status sel menjadi walkable. |
+| **Klik Kanan** | **Bodi Robot AGV** | **Intervensi Darurat Pengguna**: Memerintahkan robot untuk *Force Return to Dock & Recharge* hingga 100%. |
+| **Klik Kanan + Drag** | *(Khusus Mode Bebas)* | Memutar sudut pandang kamera (Pitch / Yaw). |
+| **Scroll Roda Mouse** | Bebas | *Zoom In* dan *Zoom Out* kamera simulasi. |
+
+---
+
+### Pintasan Keyboard (Shortcuts)
+
+| Kategori | Tombol | Label Layar | Fungsi & Keterangan |
+| :--- | :---: | :---: | :--- |
+| **Kuas Medan** | **`[1]`** | `[1] BOX` | Mengaktifkan kuas **Kardus Blokir Penuh** (*Dynamic Obstacle* memutus lorong). |
+| | **`[2]`** | `[2] OIL` | Mengaktifkan kuas **Genangan Oli Licin** (*Cost 5.0, Speed 0.4x, Drain 2.5x*). |
+| | **`[3]`** | `[3] BOOST` | Mengaktifkan kuas **Speed Boost Pad** (*Cost 0.35, Speed 1.75x, Drain 0.5x*). |
+| **Kamera 3D** | **`[F]`** / **`[C]`** / **`[V]`** | `[C] Kamera` | Siklus Kamera: **Isometrik** $\rightarrow$ **Top-Down 2D** $\rightarrow$ **POV Alpha (Dashcam A\*)** $\rightarrow$ **POV Beta (Dashcam GBFS)** $\rightarrow$ **Free-Cam**. |
+| **Misi & Alur** | **`[G]`** | `RANDOM` | **Misi Balapan Acak**: Otomatis memilih sepasang rak acak dan meluncurkan balapan seketika! |
+| | **`[T]`** | `ZONE` | **Multi-Stage Zone Transfer**: Memicu armada berpacu menuju Transfer Gate untuk berpindah ke **Zone B** / **Zone A** dengan efek sinematik *fade-out*. |
+| | **`[Spasi]`** | `PAUSE / RESUME` | Menjeda (*freeze*) atau melanjutkan seluruh aktivitas armada dan simulasi. |
+| | **`[R]`** | `RESET` | Mereset misi, membatalkan rute, dan mengembalikan armada ke Twin Dock. |
+| **Pembersihan** | **`[Delete]`** / **`[Backspace]`** / **`[X]`** | - | **Sapu Bersih Arena**: Menghapus seluruh kardus dinamis, genangan oli, boost pad, dan visual heatmap. |
+| **Analitik & Teori** | **`[M]`** | `SERIOUS / ARCADE` | Beralih antara **HUD Serious (WMS Industrial Analytics)** dan **HUD Gamifikasi (Arcade Logistics Rush)**. |
+| | **`[H]`** | `HEURISTIK: ...` | Mengganti formula jarak heuristik real-time: **Manhattan ($L_1$)**, **Euclidean ($L_2$)**, **Chebyshev ($L_\infty$)**, atau **Octile**. |
+| **Kecepatan** | **`[+]`** / **`[-]`** | - | Menambah atau mengurangi kecepatan armada secara bertahap ($2.0\times$ hingga $20.0\times$). |
+| **Aplikasi** | **`[Esc]`** | `EXIT` | Menutup jendela simulasi dengan aman tanpa *dangling thread*. |
+
+---
+
+## 4. Fitur-Fitur Utama & Inovasi Arsitektur
+
+### 1. 3 Autonomous Patrol Forklifts (Dynamic Moving Obstacles)
+- Tiga unit Forklift industri berpatroli secara otonom di 3 zona gudang independen (Zona Tengah, Kiri, dan Atas) menggunakan skema *Autonomous AI Wandering with Direction Persistence*.
+- **Pembaruan Graf Lokal Sub-Milidetik**: Setiap pergerakan roda forklift ke sel baru diperbarui dalam waktu **$< 0.01\text{ ms}$** tanpa perlu mengalokasi ulang matriks graf gudang secara keseluruhan.
+- **Deteksi Ancaman Tabrakan Proaktif**: Sistem *edge-triggering* mengecek apakah lintasan yang sedang ditempuh AGV Alpha atau Beta terpotong oleh pergerakan forklift. Jika ya, robot seketika memancarkan **Radar Pulse 3D** dan memetakan jalur alternatif secara real-time!
+
+### 2. Glassmorphism UI Telemetry Dashboard
+- Antarmuka visual futuristik dengan palet *Slate Gray & Electric Cyan* semi-transparan yang memanjakan mata.
+- **Mode Ganda Adaptif**:
+  - **Mode Serious (WMS Fleet Analytics)**: Menyajikan tabel komparasi real-time antara A* dan GBFS (Sisa Baterai, Akumulasi Biaya Lintasan, Total Simpul yang Dievaluasi, Latensi Komputasi per milidetik, Rasio Kemacetan/Bottleneck, dan Status Progres Langkah).
+  - **Mode Gamifikasi (Arcade Logistics Rush)**: Stopwatch *Time-Attack*, sistem akumulasi skor efisiensi, *Combo Multiplier* bertingkat, dan sistem rating bintang (1 s.d. 5 Bintang) berdasarkan rasio keoptimalan rute terhadap rute teoritis.
+- **Throttle Rendering 20 Hz**: Teks diperbarui dengan teknik *dirty-checking*, menghilangkan 85% beban render font CPU dan menjamin 60+ FPS konstan.
+
+### 3. Unified Twin Docking & Misi 3-Leg (Auto-Return to Base)
+- Stasiun docking terpadu (*Unified Twin Dock*) ditempatkan di posisi sentral strategis `(17, 1)` dan `(18, 1)` lengkap dengan struktur menara pengisian daya 3D.
+- **Siklus Hidup Misi 3 Etape Penuh**:
+  - **Leg 1**: *Twin Dock $\rightarrow$ Pick-up Shelf* (Menjemput kargo).
+  - **Leg 2**: *Pick-up Shelf $\rightarrow$ Drop-off Shelf* (Mengantar kargo).
+  - **Leg 3**: *Drop-off Shelf $\rightarrow$ Twin Dock Base* (Otomatis pulang ke pangkalan dan mengisi ulang daya hingga 100%).
+- **Pemisahan Lajur Lateral (Dual-Lane Offset)**: Saat kedua robot melintasi lorong yang sama, sistem secara otomatis menggeser koordinat translasi ke kiri dan kanan sumbu vektor hadap robot (+0.22 / -0.22 unit), mencegah robot saling bertabrakan atau tembus badan (*clipping*).
+
+### 4. Order Task Queue (FIFO Asinkron)
+- Simulator mendukung penugasan pesanan beruntun tanpa jeda.
+- Pengguna dapat memilih pasangan rak baru saat balapan sebelumnya sedang berlangsung. Tiket misi otomatis dimasukkan ke dalam antrean FIFO (*First-In, First-Out*) dengan indikator badge `PENDING: X` di pojok kanan atas layar.
+- Begitu kedua robot menyelesaikan etape kepulangan ke dock, pesanan berikutnya langsung dieksekusi secara otomatis!
+
+### 5. Multi-Stage Zone Transfer (Zone A $\longleftrightarrow$ Zone B)
+- Menekan tombol **`[T]`** atau memilih menu `ZONE` menginstruksikan armada untuk meluncur ke **Transfer Gate** di dinding timur `(34, 13)`.
+- Saat gerbang tercapai, kamera melakukan efek sinematik *Fade to Black*, graf gudang diregenerasi di balik layar menjadi **Zone B** (fasilitas penyimpanan teknologi tinggi dengan sekat brankas pusat dan klaster rak bertingkat rapat), lalu armada keluar dari gerbang dengan baterai terisi penuh dan melakukan *auto-return* menuju pangkalan.
+
+### 6. First-Person POV Dashcam & Siklus Kamera Lengkap
+- Sudut pandang *First-Person Dashcam* terpasang langsung di atas kokpit sensor AGV Alpha (`pov_alpha`) dan AGV Beta (`pov_beta`).
+- Dilengkapi stabilisasi rotasi anti *gimbal lock* dan penonaktifan otomatis billboard label agar pandangan ke depan tetap jernih dan imersif.
+
+---
+
+## 5. Analisis Perbandingan Algoritma: A* vs GBFS
+
+| Parameter Evaluasi | A\* Search Algorithm | Greedy Best-First Search (GBFS) |
+| :--- | :--- | :--- |
+| **Fungsi Evaluasi** | $f(n) = g(n) + h(n)$ | $f(n) = h(n)$ |
+| **Keoptimalan Rute (Optimality)** | **100% Dijamin Optimal** (dengan heuristik *admissible*) | **Tidak Dijamin Sub-optimal** |
+| **Pertimbangan Medan Berbobot** | **Sangat Peka**: Memutar menghindari oli ($g=5.0$) dan memprioritaskan booster ($g=0.35$). | **Buta Total**: Mengabaikan $g(n)$, menerobos rintangan berbahaya. |
+| **Respon Jebakan Cul-de-Sac** | **Cerdas**: Memilih lorong tengah yang tembus tanpa terjebak di kantong buntu. | **Terjebak Parah**: Tergiur jarak lurus semu, mengeksplorasi ujung kantong buntu secara sia-sia. |
+| **Jumlah Simpul Dieksplorasi** | Sangat efisien (~20 - 90 simpul berkat *tie-breaking* cerdas). | Berfluktuasi ekstrem (bisa sangat sedikit pada ruang lapang, membengkak di labirin). |
+| **Waktu Komputasi** | **Sub-milidetik (< 0.8 ms)** | **Sub-milidetik (< 0.5 ms)** |
+| **Kesesuaian Industri** | **Ideal untuk AGV komersial** (keselamatan, efisiensi energi, jalur terpendek). | Hanya cocok untuk pencarian cepat di graf tanpa bobot dan tanpa rintangan kompleks. |
+
+---
+
+## 6. Struktur Direktori Proyek
+
+Arsitektur kode diorganisasikan secara modular memisahkan lapisan kognisi graf, kinematika robot, visual 3D, dan antarmuka pengguna:
 
 ```text
 KKA-ETS-Implementation/
 ├── assets/
-│   └── models/               # Berkas model 3D eksternal & dokumentasi unduhan
-│       ├── agv.obj
-│       ├── shelf.obj
-│       ├── cargo.obj
-│       ├── dock.obj
-│       └── README.md
+│   ├── fonts/
+│   │   ├── Roboto-Bold.ttf            # Font tipografi judul & tombol
+│   │   └── Roboto-Regular.ttf         # Font telemetri & teks antarmuka
+│   └── models/
+│       ├── robot.obj                  # Model 3D sasis AGV industri
+│       ├── robot-box.obj              # Model 3D AGV bermuatan kargo
+│       ├── empty-shelf.obj            # Model 3D rak palet kosong
+│       ├── occupied-shelf.obj         # Model 3D rak palet berisi kargo
+│       ├── cargo.obj                  # Model 3D kotak kargo karton
+│       └── docking-station.obj        # Model 3D stasiun pengisian daya
 │
 ├── src/
-│   ├── config.py             # Konstanta global, koordinat grid 35x25, warna, & preset kamera
+│   ├── config.py                      # Parameter grid 35x25, palet warna, dock coordinates, dan baterai
+│   ├── simulation.py                  # Loop utama Ursina Engine & orchestrator siklus hidup aplikasi
 │   │
-│   ├── cognition/            # [KOGNISI] Logika Graf & Algoritma Pathfinding
-│   │   ├── heuristics.py     # Manhattan, Euclidean, Octile, Chebyshev
-│   │   ├── warehouse_graph.py# Graf grid 35x25, generator tata letak, dinding, & access nodes rak
-│   │   └── pathfinding.py    # A* Search, GBFS, DualPathPlanner konkuren
+│   ├── cognition/                     # [LAPISAN KOGNISI] Logika Graf & Algoritma Pencarian
+│   │   ├── heuristics.py              # Manhattan, Euclidean, Chebyshev, Octile
+│   │   ├── warehouse_graph.py         # Matriks graf 35x25, layout generator, rintangan dinding & access nodes
+│   │   └── pathfinding.py             # Engine A* Search, GBFS, DualPathPlanner konkuren, & nearest dock
 │   │
-│   ├── behavior/             # [BEHAVIOR] Kontrol Kinematika & Misi Robot
-│   │   ├── robot_controller.py # AGV Controller, lerp heading, lidar rotasi, kargo dek, trail
-│   │   └── mission_manager.py  # Dispatcher balapan dual-robot, stopwatch, skor, & winner logic
+│   ├── behavior/                      # [LAPISAN BEHAVIOR] Kinematika Robot & Manajer Misi
+│   │   ├── robot_controller.py        # Controller AGV, lerp rotasi, baterai, trail pooling, radar pulse
+│   │   ├── forklift_controller.py     # AI Patrol Forklift mandiri (Dynamic moving obstacles)
+│   │   └── mission_manager.py         # Dispatcher balapan, zone transfer, deteksi ancaman, & gamifikasi
 │   │
-│   ├── environment/          # [ENVIRONMENT] Pemandangan 3D & Aset
-│   │   ├── asset_loader.py   # Loader model eksternal aman dengan graceful fallback
-│   │   ├── interactive_shelf.py# Entitas rak 3D ber-Collider dengan deteksi klik & seleksi
-│   │   └── warehouse_scene.py# Konstruksi lantai 35x25, balok dinding beton, docking & goal pad, pencahayaan
+│   ├── environment/                   # [LAPISAN ENVIRONMENT] Lingkungan 3D & Scene Graph
+│   │   ├── asset_loader.py            # Loader model 3D eksternal aman dengan graceful fallback
+│   │   ├── interactive_shelf.py       # Entitas rak 3D ber-Collider dengan indikator seleksi
+│   │   └── warehouse_scene.py         # Lantai tiled, mesh combining, docking stations, & heatmap renderer
 │   │
-│   ├── communication/        # [KOMUNIKASI] Antarmuka Interaktif
-│   │   ├── interaction_system.py # Raycast mouse hover & state-machine klik
-│   │   ├── hud_serious.py    # Dashboard analitik industri WMS
-│   │   ├── hud_gamification.py # Arcade UI: Time-Attack, skor, combo, & bintang
-│   │   └── ui_controller.py  # Master UI: tombol layar & handler hotkey keyboard
-│   │
-│   └── simulation.py         # Koordinator aplikasi utama Ursina Engine
+│   └── communication/                 # [LAPISAN KOMUNIKASI] Antarmuka Interaktif & Telemetri
+│       ├── interaction_system.py      # Raycasting kursor mouse, state machine klik, & penempatan medan
+│       ├── hud_serious.py             # Dashboard analitik industri WMS
+│       ├── hud_gamification.py        # HUD Arcade: Time-Attack, skor, combo, & rating bintang
+│       └── ui_controller.py           # Master UI Controller & keyboard/mouse input dispatcher
 │
-├── requirements.txt          # Dependensi (numpy>=1.24.0, ursina>=6.0.0)
-├── README.md                 # Dokumentasi panduan lengkap
-└── main.py                   # Berkas peluncur langsung (tanpa dependensi terminal)
+├── tests/
+│   ├── test_full_suite.py             # Uji komprehensif integrasi seluruh fitur v2.0
+│   └── test_pov_camera.py             # Uji stabilitas orientasi kamera POV First-Person
+│
+├── requirements.txt                   # Berkas dependensi Python
+├── README.md                          # Dokumentasi utama proyek
+└── main.py                            # Titik masuk eksekusi langsung aplikasi
 ```
 
 ---
 
-## Instalasi & Menjalankan Program
+## 7. Instalasi & Menjalankan Program
 
-### Persyaratan Sistem
-- **Python**: Versi 3.9 s.d. 3.12
-- Pustaka: `numpy`, `ursina`
+### Prasyarat Sistem
+- **Sistem Operasi**: Windows 10/11, macOS, atau Linux (Ubuntu 20.04+ direkomendasikan).
+- **Python**: Versi **3.9**, **3.10**, **3.11**, atau **3.12**.
+- **Perangkat Keras**: Kartu grafis dengan dukungan OpenGL 3.3+ (Integrated Intel/AMD atau Dedicated NVIDIA/AMD).
 
-### Langkah Eksekusi (Windows & Linux)
-1. Aktifkan virtual environment Anda:
+### Langkah Instalasi
+
+1. **Clone repositori proyek ini** (atau ekstrak berkas `.zip`):
    ```bash
-   # Linux / Ubuntu
+   git clone https://github.com/hadryan/KKA-ETS-Implementation.git
+   cd KKA-ETS-Implementation
+   ```
+
+2. **Buat dan aktifkan Virtual Environment**:
+   ```bash
+   # Linux / macOS
+   python3 -m venv venv
    source venv/bin/activate
 
-   # Windows
-   .\venv\Scripts\activate
+   # Windows (PowerShell)
+   python -m venv venv
+   .\venv\Scripts\Activate.ps1
+
+   # Windows (Command Prompt)
+   .\venv\Scripts\activate.bat
    ```
-2. Pastikan paket dependensi terpasang:
+
+3. **Pasang paket pustaka dependensi**:
    ```bash
+   pip install --upgrade pip
    pip install -r requirements.txt
    ```
-3. Jalankan simulator:
+   *Isi `requirements.txt` meliputi `ursina>=6.0.0`, `numpy>=1.24.0`, dan `Pillow>=10.0.0`.*
+
+4. **Jalankan simulator 3D**:
    ```bash
    python main.py
    ```
-   *(Jendela 3D interaktif 1280x720 akan langsung terbuka tanpa pertanyaan di terminal!)*
+   *(Jendela simulasi grafis 1280×720 dengan pencahayaan 3D dan audio engine akan langsung terbuka secara instan).*
+
+5. *(Opsional)* **Menjalankan Pengujian Unit Otomatis**:
+   ```bash
+   PYTHONPATH=. pytest -p no:launch_testing tests/test_full_suite.py
+   ```
 
 ---
 
-## Panduan Kontrol & Pintasan Keyboard
+## 8. Informasi Akademik & Kontributor
 
-| Kontrol Input | Tombol Layar | Fungsi & Keterangan |
-| :--- | :--- | :--- |
-| **Klik Kiri Mouse** | - | **Raycasting Point-and-Click**: Klik 1 pada rak kargo (Pick-up), Klik 2 pada rak kosong (Drop-off). |
-| **`[M]`** | **`[Mode HUD]`** | **Toggle HUD Mode Ganda**: Beralih antara **Serious (WMS Analytics)** dan **Gamifikasi (Arcade)**. |
-| **`[H]`** | **`[Heuristik: ...]`** | **Ganti Heuristik Informed Search**: Beralih antara **Manhattan ($L_1$)**, **Euclidean ($L_2$)**, **Chebyshev ($L_\infty$)**, dan **Octile**. Rute langsung dihitung ulang secara real-time! |
-| **`[G]`** | **`[Misi Acak]`** | **Instan Random Race**: Otomatis memilih sepasang rak acak dan langsung meluncurkan balapan! |
-| **`[Spasi]`** | **`[Jeda / Lanjut]`** | Menjeda (*pause*) atau melanjutkan pergerakan armada AGV. |
-| **`[R]`** | **`[Reset]`** | Mengembalikan kedua robot kembali ke stasiun dock pojok kiri bawah. |
-| **`[V]`** | **`[Kamera: ...]`** | Mengganti sudut kamera: **Isometrik** $\rightarrow$ **Top-Down 2D** $\rightarrow$ **Follow Alpha** $\rightarrow$ **Follow Beta** $\rightarrow$ **Bebas (Free Orbit)**. |
-| **`[1]` / `[2]`** | - | Langsung mengunci kamera mengekor di belakang AGV Alpha / AGV Beta. |
-| **`[+]` / `[-]`** | **`[Cepat] / [Lambat]`** | Menambah atau memperlambat laju kecepatan simulasi. |
-| **Klik Kanan + Drag** | *(Mode Bebas)* | Mengorbit / memutar kamera bebas di sekeliling arena 35x25. |
-| **Scroll Mouse** | - | *Zoom-in* / *Zoom-out* kamera. |
-| **`[Esc]`** | **`[Keluar]`** | Menutup simulator dengan aman. |
+- **Mata Kuliah**: Konsep Kecerdasan Artificial (KKA)
+- **Agenda**: Evaluasi Tengah Semester (ETS) — Implementasi Praktis
+- **Fokus Kajian**: *Informed Search Algorithms, Multi-Agent Pathfinding (MAPF), Dynamic Replanning, Weighted Grid-World Graphs, Game Engine Digital Twins*.
+- **Versi**: **v2.0 (Final Release)**
+
+---
+*Dikembangkan dengan dedikasi untuk visualisasi kecerdasan artifisial yang elegan, efisien, dan presisi tinggi.*

@@ -190,7 +190,7 @@ class AGVRobot(Entity):
 
         # 6. Sistem Manajemen Energi & Baterai AGV
         self.battery: float = 100.0
-        self.battery_drain_rate: float = BATTERY_DRAIN_PER_GRID  # % kapasitas per langkah petak grid
+        self.battery_drain_rate: float = BATTERY_DRAIN_PER_GRID  # % kapasitas per langkah petak grid (diadaptasi dari feature/battery-system: 1.5%)
         self.is_critical_battery: bool = False
         self.battery_critical_threshold: float = BATTERY_CRITICAL_THRESHOLD
         self.battery_safety_margin: float = BATTERY_SAFETY_MARGIN
@@ -230,6 +230,7 @@ class AGVRobot(Entity):
         self.state = RobotState.IDLE_DOCK
         self.leg1_waypoints: List[Vec3] = []
         self.leg2_waypoints: List[Vec3] = []
+        self.leg3_waypoints: List[Vec3] = []
         self.active_waypoints: List[Vec3] = []
         self.waypoint_idx: int = 0
         self.is_paused: bool = False
@@ -238,9 +239,13 @@ class AGVRobot(Entity):
         # Pelacakan koordinat grid untuk replanning dinamis
         self.leg1_grid_path: List[Coord] = []
         self.leg2_grid_path: List[Coord] = []
+        self.leg3_grid_path: List[Coord] = []
         self.active_grid_path: List[Coord] = []
         self.pickup_access: Optional[Coord] = None
         self.dropoff_access: Optional[Coord] = None
+        self.on_pickup_callback = None
+        self.on_dropoff_callback = None
+        self.on_finish_callback = None
         self.replan_count: int = 0
         self.last_explored_nodes: Set[Coord] = set()
 
@@ -309,9 +314,11 @@ class AGVRobot(Entity):
         self.deck_cargo.enabled = False
         self.leg1_waypoints.clear()
         self.leg2_waypoints.clear()
+        self.leg3_waypoints.clear()
         self.active_waypoints.clear()
         self.leg1_grid_path.clear()
         self.leg2_grid_path.clear()
+        self.leg3_grid_path.clear()
         self.active_grid_path.clear()
         self.pickup_access = None
         self.dropoff_access = None
@@ -395,33 +402,40 @@ class AGVRobot(Entity):
         self,
         leg1_path: List[Coord],
         leg2_path: List[Coord],
+        leg3_path: Optional[List[Coord]] = None,
         on_pickup=None,
         on_dropoff=None,
+        on_finish=None,
     ):
         """
-        Memuat rute misi dua etape:
-        - Leg 1: Dari posisi saat ini ke Pick-up Access Node
+        Memuat rute misi 3 etape (Round-Trip):
+        - Leg 1: Dari titik spawn ke Pick-up Access Node
         - Leg 2: Dari Pick-up Access Node ke Drop-off Access Node
+        - Leg 3: Dari Drop-off Access Node kembali ke stasiun Dock asal (Auto-Return to Base)
         Menggunakan pemisahan lajur lateral (Dual-Lane AGV separation).
         """
         self.clear_trail()
         self.on_pickup_callback = on_pickup
         self.on_dropoff_callback = on_dropoff
+        self.on_finish_callback = on_finish
 
         raw_leg1 = [grid_to_world(p[0], p[1], 0.0) for p in leg1_path]
         raw_leg2 = [grid_to_world(p[0], p[1], 0.0) for p in leg2_path]
+        raw_leg3 = [grid_to_world(p[0], p[1], 0.0) for p in leg3_path] if leg3_path else []
 
         # Separasi lajur lateral: Alpha di lajur kanan (+0.22), Beta di lajur kiri (-0.22)
         offset = -0.22 if self.is_beta else 0.22
         self.leg1_waypoints = self._compute_lane_offset(raw_leg1, offset)
         self.leg2_waypoints = self._compute_lane_offset(raw_leg2, offset)
+        self.leg3_waypoints = self._compute_lane_offset(raw_leg3, offset) if raw_leg3 else []
 
-        self.total_mission_steps = len(leg1_path) + len(leg2_path)
+        self.total_mission_steps = len(leg1_path) + len(leg2_path) + (len(leg3_path) if leg3_path else 0)
         self.total_steps_executed = 0
         self.finish_time = None
 
         self.leg1_grid_path = list(leg1_path)
         self.leg2_grid_path = list(leg2_path)
+        self.leg3_grid_path = list(leg3_path) if leg3_path else []
         self.pickup_access = leg1_path[-1] if leg1_path else None
         self.dropoff_access = leg2_path[-1] if leg2_path else None
         self.replan_count = 0
@@ -540,7 +554,7 @@ class AGVRobot(Entity):
 
         if hasattr(self, 'graph') and self.graph and hasattr(self.graph, 'terrain_weights'):
             weight = self.graph.terrain_weights.get(curr_grid, 1.0)
-            if weight > 2.0:  # HAZARD_OIL (Cost 5.0 -> Slowdown 0.4x, Drain 2.5x)
+            if weight > 2.0:  # HAZARD_OIL (Cost 5.0 -> Slowdown 0.4x, Drain 2.5x proporsional)
                 speed_mult = 0.4
                 drain_mult = 2.5
                 if not getattr(self, '_on_oil', False):
@@ -586,16 +600,20 @@ class AGVRobot(Entity):
             # Tiba di titik antar (Drop-off)
             self.state = RobotState.UNLOADING_CARGO
             self.pause_timer = ACTION_PAUSE_DURATION
-            self.spawn_floating_text("+MISSION COMPLETE+", color.rgb32(241, 196, 15))
+            self.spawn_floating_text("+CARGO UNLOADED+", color.rgb32(241, 196, 15))
             if self.on_dropoff_callback:
                 self.on_dropoff_callback(self)
 
         elif self.state == RobotState.RETURNING_TO_DOCK:
-            # Tiba di stasiun dock untuk isi daya
-            self.state = RobotState.CHARGING
-            self.pause_timer = 2.0
-            self.label_tag.text = f"{self.robot_name}\n[MENGISI DAYA (CHARGING)...]"
-            self.label_tag.color = color.rgb32(46, 204, 113)
+            # Tiba di stasiun dock asal (Leg 3 Selesai)!
+            self.state = RobotState.FINISHED
+            self.finish_time = time.time()
+            self.spawn_floating_text("+BASE REACHED+", color.rgb32(46, 204, 113))
+            self.label_tag.text = f"{self.robot_name}\n[STANDBY DI DOCK]"
+            self.label_tag.color = self.primary_col
+            self.recharge_full()
+            if self.on_finish_callback:
+                self.on_finish_callback(self)
 
         elif self.state == RobotState.FINISHED:
             pass
@@ -611,10 +629,39 @@ class AGVRobot(Entity):
             self.state = RobotState.MOVING_TO_DROPOFF
 
         elif self.state == RobotState.UNLOADING_CARGO:
-            # Kargo berhasil diturunkan, misi selesai!
+            # Kargo berhasil diturunkan, robot otomatis memulai Leg 3: Auto-Return to Base!
             self.deck_cargo.enabled = False
-            self.state = RobotState.FINISHED
-            self.finish_time = time.time()
+            self._start_return_leg()
+
+    def _start_return_leg(self):
+        """Memulai perjalanan Leg 3: Pulang dari rak Drop-off menuju Dock asal."""
+        self.state = RobotState.RETURNING_TO_DOCK
+        self.spawn_floating_text(">> RETURNING TO BASE >>", color.rgb32(0, 229, 255))
+        self.label_tag.text = f"{self.robot_name}\n[PULANG KE BASE (LEG 3)]"
+
+        if self.leg3_waypoints:
+            self.active_waypoints = self.leg3_waypoints
+            self.active_grid_path = list(self.leg3_grid_path)
+            self.waypoint_idx = 0
+        else:
+            # Kalkulasi rute kembali ke spawn_coord jika belum terisi
+            start_coord = world_to_grid(self.position)
+            from src.cognition.pathfinding import a_star_search, greedy_best_first_search
+            search_fn = a_star_search if self.is_alpha else greedy_best_first_search
+            res = search_fn(self.graph, start_coord, self.spawn_coord) if self.graph else None
+            if res and res.success and res.path:
+                self.leg3_grid_path = list(res.path)
+                raw3 = [grid_to_world(p[0], p[1], 0.0) for p in res.path]
+                offset = -0.22 if self.is_beta else 0.22
+                self.leg3_waypoints = self._compute_lane_offset(raw3, offset)
+                self.active_waypoints = self.leg3_waypoints
+                self.active_grid_path = list(self.leg3_grid_path)
+                self.waypoint_idx = 0
+            else:
+                self.state = RobotState.FINISHED
+                self.finish_time = time.time()
+                if self.on_finish_callback:
+                    self.on_finish_callback(self)
 
     # =========================================================================
     # METODE MANAJEMEN BATERAI & RECHARGE (FITUR 1)
@@ -903,6 +950,19 @@ class AGVRobot(Entity):
                     self.leg2_waypoints = self._compute_lane_offset(raw2, offset)
                     self.replan_count += 1
                     return True
+
+        # ---------------------------------------------------------------------
+        # KASUS 4: SEDANG PULANG MENUJU DOCK / BASE (LEG 3)
+        # ---------------------------------------------------------------------
+        elif self.state == RobotState.RETURNING_TO_DOCK:
+            res = search_fn(graph, start_node, self.spawn_coord, heuristic=heuristic_fn)
+            if not res.success or not res.path:
+                return False
+
+            self.last_explored_nodes = set(res.explored_order)
+            self._apply_new_active_path(res.path)
+            self.replan_count += 1
+            return True
 
         return False
 
