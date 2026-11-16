@@ -38,16 +38,16 @@ def world_to_grid(world_pos) -> Tuple[int, int]:
 # ============================================================================
 # TITIK START (DOCKING STATIONS) & GOAL PROPORSIONAL DALAM GRID 35x25
 # ============================================================================
-# Area Standby & Docking di pojok kiri bawah arena
-SPAWN_ALPHA: Tuple[int, int] = (1, 1)   # AGV Alpha (A* Search)
-SPAWN_BETA: Tuple[int, int] = (1, 3)    # AGV Beta (Greedy Best-First Search)
-DEFAULT_START: Tuple[int, int] = (1, 2) # Titik tengah docking area
+# Area Standby & Docking Kembar (Unified Twin Dock) di area bawah/tengah arena (35x25)
+SPAWN_ALPHA: Tuple[int, int] = (17, 1)   # AGV Alpha (A* Search)
+SPAWN_BETA: Tuple[int, int] = (18, 1)    # AGV Beta (Greedy Best-First Search)
+DEFAULT_START: Tuple[int, int] = (17, 1) # Titik tengah docking area
 
 # Titik Target Goal di seberang diagonal (pojok kanan atas arena)
 DEFAULT_GOAL: Tuple[int, int] = (32, 21)
 
-STANDBY_ZONE_MIN: Tuple[int, int] = (0, 0)
-STANDBY_ZONE_MAX: Tuple[int, int] = (4, 4)
+STANDBY_ZONE_MIN: Tuple[int, int] = (15, 0)
+STANDBY_ZONE_MAX: Tuple[int, int] = (20, 2)
 
 # ============================================================================
 # PARAMETER PERGERAKAN & KINEMATIKA ROBOT
@@ -151,17 +151,39 @@ CAMERA_PRESETS = {
         "offset": (0.0, 12.0, -10.0),
         "fov": 50,
     },
+    "pov_alpha": {
+        "pos": (0.0, 1.5, 0.5),
+        "rot": (10.0, 0.0, 0.0),
+        "fov": 68,
+    },
+    "pov_beta": {
+        "pos": (0.0, 1.5, 0.5),
+        "rot": (10.0, 0.0, 0.0),
+        "fov": 68,
+    },
 }
+
+# ============================================================================
+# SISTEM BATERAI AGV & STASIUN PENGISIAN DAYA (CHARGING DOCK)
+# ============================================================================
+BATTERY_DRAIN_PER_GRID: float = 0.25      # % baterai terkuras per 1 sel grid (game balance: hemat agar bisa return to base)
+BATTERY_CRITICAL_THRESHOLD: float = 20.0  # Batas kritis (%) -> paksa menuju Charging Dock
+BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pulang
+
+# Stasiun pengisian tambahan (selain dock spawn Alpha & Beta). Harus walkable di Zone A dan B.
+CHARGING_STATIONS = [(22, 15), (7, 17), (19, 9), (30, 9), (30, 19)]
 
 # ============================================================================
 # KONFIGURASI UI MODERN (MAKEOVER)
 # ============================================================================
-BATTERY_DRAIN_PER_GRID: float = 1.5       # % baterai terkuras per 1 sel grid
-BATTERY_CRITICAL_THRESHOLD: float = 20.0  # Batas kritis (%) -> paksa menuju Charging Dock
-BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pulang
+import os
+from pathlib import Path
+from ursina import application
 
-# Pastikan folder assets/fonts ada. Jika Anda tidak mendownload font, 
-# Ursina akan fallback ke font bawaan (tidak akan crash).
+# Pastikan folder asset mengarah ke root repositori agar font & model selalu ditemukan
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+application.asset_folder = PROJECT_ROOT
+
 FONT_PATH = 'assets/fonts/Roboto-Regular.ttf' 
 
 # Warna UI Glassmorphism (Semi-transparan gelap kebiruan)

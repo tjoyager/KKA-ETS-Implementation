@@ -9,7 +9,7 @@ stasiun docking Start, target Goal, dan rintangan dinding (Wall Obstacles / Cul-
 import random
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Any, Dict, List, Optional, Tuple, Set
 import numpy as np
 
 from src.config import (
@@ -130,26 +130,45 @@ class WarehouseGraph100:
         if self.is_in_bounds(x, y):
             self.grid[y, x] = int(cell_type)
 
-    def update_forklift_cell(self, old_coord: Optional[Coord], new_coord: Optional[Coord]) -> None:
+    def update_forklift_cell(self, old_coord: Optional[Coord], new_coord: Optional[Coord], forklift_id: Optional[Any] = None) -> None:
         """
         Memperbarui posisi sel rintangan Forklift secara real-time.
+        Mendukung multi-forklift independen tanpa konflik / race-condition menggunakan tracking multiset sel.
         Hanya merekomputasi tetangga lokal (radius 1 sel) di sekitar koordinat lama dan baru
         dalam waktu sub-milidetik (< 0.01 ms) tanpa GC freeze, menjaga FPS Ursina stabil di 60 FPS.
         """
+        if not hasattr(self, '_forklift_cell_counts'):
+            self._forklift_cell_counts: Dict[Coord, int] = {}
+
         affected: Set[Coord] = set()
 
         if old_coord and self.is_in_bounds(old_coord[0], old_coord[1]):
             ox, oy = old_coord
-            if self.grid[oy, ox] == CellType.FORKLIFT:
-                # Kembalikan ke tipe sel aslinya jika ada di dock atau gate
-                if old_coord == self.dock_alpha or old_coord == self.dock_beta:
-                    self.grid[oy, ox] = CellType.DOCK
-                elif old_coord in self.transfer_gate_coords:
-                    self.grid[oy, ox] = CellType.TRANSFER_GATE
-                elif old_coord == self.goal:
-                    self.grid[oy, ox] = CellType.GOAL
-                else:
-                    self.grid[oy, ox] = CellType.EMPTY
+            if old_coord in self._forklift_cell_counts:
+                self._forklift_cell_counts[old_coord] -= 1
+                if self._forklift_cell_counts[old_coord] <= 0:
+                    del self._forklift_cell_counts[old_coord]
+                    if self.grid[oy, ox] == CellType.FORKLIFT:
+                        # Kembalikan ke tipe sel aslinya jika sudah tidak ada forklift lain
+                        if old_coord == self.dock_alpha or old_coord == self.dock_beta:
+                            self.grid[oy, ox] = CellType.DOCK
+                        elif old_coord in self.transfer_gate_coords:
+                            self.grid[oy, ox] = CellType.TRANSFER_GATE
+                        elif old_coord == self.goal:
+                            self.grid[oy, ox] = CellType.GOAL
+                        else:
+                            self.grid[oy, ox] = CellType.EMPTY
+            else:
+                if self.grid[oy, ox] == CellType.FORKLIFT:
+                    if old_coord == self.dock_alpha or old_coord == self.dock_beta:
+                        self.grid[oy, ox] = CellType.DOCK
+                    elif old_coord in self.transfer_gate_coords:
+                        self.grid[oy, ox] = CellType.TRANSFER_GATE
+                    elif old_coord == self.goal:
+                        self.grid[oy, ox] = CellType.GOAL
+                    else:
+                        self.grid[oy, ox] = CellType.EMPTY
+
             affected.add(old_coord)
             for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
                 nx, ny = ox + dx, oy + dy
@@ -158,6 +177,7 @@ class WarehouseGraph100:
 
         if new_coord and self.is_in_bounds(new_coord[0], new_coord[1]):
             nx, ny = new_coord
+            self._forklift_cell_counts[new_coord] = self._forklift_cell_counts.get(new_coord, 0) + 1
             # Jangan timpa rintangan permanen rak atau dinding
             if self.grid[ny, nx] in (CellType.EMPTY, CellType.DOCK, CellType.GOAL, CellType.TRANSFER_GATE):
                 self.grid[ny, nx] = CellType.FORKLIFT
@@ -509,9 +529,13 @@ class WarehouseGraph100:
         for y in range(16, wh.height):
             wall_coords.add((17, y))
 
-        # Partisi Dinding 2: Sekat partisi ruangan di zona bawah (x=17, y=1..5)
-        for y in range(1, 6):
+        # Partisi Dinding 2: Sekat partisi ruangan di zona bawah (x=17, y=3..5)
+        for y in range(3, 6):
             wall_coords.add((17, y))
+
+        # Pastikan docking station kembar Alpha (17, 1) & Beta (18, 1) tidak tertutup dinding
+        wall_coords.discard(SPAWN_ALPHA)
+        wall_coords.discard(SPAWN_BETA)
 
         # Partisi Dinding 3: Cul-de-Sac Trap Utama (Kantong Buntu U-Shape)
         # Menghadap ke barat di antara x=24..31 dan y=11..16
@@ -535,10 +559,17 @@ class WarehouseGraph100:
             if (wx, wy) in wh.shelves:
                 del wh.shelves[(wx, wy)]
 
-        # 5. Titik Target Goal di (32, 21)
+        # 5. Titik Target Goal di (32, 21) & Docking Station Kembar
         wh.set_cell(DEFAULT_GOAL[0], DEFAULT_GOAL[1], CellType.GOAL)
         if DEFAULT_GOAL in wh.shelves:
             del wh.shelves[DEFAULT_GOAL]
+
+        wh.set_cell(SPAWN_ALPHA[0], SPAWN_ALPHA[1], CellType.DOCK)
+        wh.set_cell(SPAWN_BETA[0], SPAWN_BETA[1], CellType.DOCK)
+        if SPAWN_ALPHA in wh.shelves:
+            del wh.shelves[SPAWN_ALPHA]
+        if SPAWN_BETA in wh.shelves:
+            del wh.shelves[SPAWN_BETA]
 
         # 5b. Gerbang Transfer Antar-Zona (Zone Transfer Gate) di x=34, y=12..14
         wh.transfer_gate_coords = {(34, 12), (34, 13), (34, 14)}
@@ -665,10 +696,17 @@ class WarehouseGraph100:
             if (wx, wy) in wh.shelves:
                 del wh.shelves[(wx, wy)]
 
-        # Goal Pad di (32, 21)
+        # Goal Pad di (32, 21) & Docking Station Kembar
         wh.set_cell(DEFAULT_GOAL[0], DEFAULT_GOAL[1], CellType.GOAL)
         if DEFAULT_GOAL in wh.shelves:
             del wh.shelves[DEFAULT_GOAL]
+
+        wh.set_cell(SPAWN_ALPHA[0], SPAWN_ALPHA[1], CellType.DOCK)
+        wh.set_cell(SPAWN_BETA[0], SPAWN_BETA[1], CellType.DOCK)
+        if SPAWN_ALPHA in wh.shelves:
+            del wh.shelves[SPAWN_ALPHA]
+        if SPAWN_BETA in wh.shelves:
+            del wh.shelves[SPAWN_BETA]
 
         # Transfer Gate di (34, 12..14)
         wh.transfer_gate_coords = {(34, 12), (34, 13), (34, 14)}

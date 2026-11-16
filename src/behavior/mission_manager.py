@@ -8,7 +8,7 @@ kalkulasi rencana balapan sinkron, pelacakan waktu, sistem skor, dan penentuan p
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple
 from ursina import time, camera, color, invoke, Entity, Vec3, Text, destroy
 
 from src.config import (
@@ -56,6 +56,7 @@ class MissionManager:
     ):
         self.graph = graph
         self.scene = scene
+        self.scene.mission_mgr = self
         self.robot_alpha = robot_alpha
         self.robot_beta = robot_beta
 
@@ -102,8 +103,9 @@ class MissionManager:
         self.task_queue: List[DeliveryOrder] = []
         self._order_counter: int = 1
 
-        # Rintangan Bergerak Dinamis (User Forklift)
+        # Rintangan Bergerak Dinamis (User Forklifts)
         self.forklift = None
+        self.forklifts: List[Any] = []
         self._last_forklift_threats: Set[Coord] = set()
         self._charger_markers: list = []
         self._refresh_charging_markers()
@@ -131,7 +133,17 @@ class MissionManager:
 
     def set_forklift(self, forklift):
         """Mendaftarkan objek Forklift interaktif untuk deteksi ancaman tabrakan real-time."""
-        self.forklift = forklift
+        if isinstance(forklift, (list, tuple)):
+            self.forklifts = list(forklift)
+            self.forklift = self.forklifts[0] if self.forklifts else None
+        else:
+            self.forklift = forklift
+            self.forklifts = [forklift] if forklift else []
+
+    def set_forklifts(self, forklifts: List[Any]):
+        """Mendaftarkan daftar beberapa unit Forklift."""
+        self.forklifts = list(forklifts)
+        self.forklift = forklifts[0] if forklifts else None
 
     def enqueue_order(
         self,
@@ -210,24 +222,30 @@ class MissionManager:
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
 
-        # Berikan rute ke Robot Alpha (A*)
+        # Berikan rute 3 Etape (Pick-up -> Drop-off -> Return to Base) ke Robot Alpha (A*)
+        leg3_alpha = plan.alpha_plan.leg3.path if plan.alpha_plan.leg3 and plan.alpha_plan.leg3.success else []
         self.robot_alpha.graph = self.graph
         self.robot_alpha.speed = self.current_speed
         self.robot_alpha.set_mission_legs(
             leg1_path=plan.alpha_plan.leg1.path,
             leg2_path=plan.alpha_plan.leg2.path,
+            leg3_path=leg3_alpha,
             on_pickup=self._on_robot_pickup,
             on_dropoff=self._on_robot_dropoff,
+            on_finish=self._on_robot_finish,
         )
 
-        # Berikan rute ke Robot Beta (GBFS)
+        # Berikan rute 3 Etape ke Robot Beta (GBFS)
+        leg3_beta = plan.beta_plan.leg3.path if plan.beta_plan.leg3 and plan.beta_plan.leg3.success else []
         self.robot_beta.graph = self.graph
         self.robot_beta.speed = self.current_speed
         self.robot_beta.set_mission_legs(
             leg1_path=plan.beta_plan.leg1.path,
             leg2_path=plan.beta_plan.leg2.path,
+            leg3_path=leg3_beta,
             on_pickup=self._on_robot_pickup,
             on_dropoff=self._on_robot_dropoff,
+            on_finish=self._on_robot_finish,
         )
 
         # Visualisasikan Heatmap Komputasi Node Exploration (Fitur 1: A* vs GBFS)
@@ -244,15 +262,17 @@ class MissionManager:
         """Dipanggil saat salah satu robot tiba di rak pick-up."""
         if self.selected_pickup_shelf and self.selected_pickup_shelf.shelf_data.has_cargo:
             item_name = self.selected_pickup_shelf.remove_cargo()
-            # print(f"[{robot.robot_name}] Mengambil kargo: {item_name}")
 
     def _on_robot_dropoff(self, robot: AGVRobot):
-        """Dipanggil saat salah satu robot tiba di rak tujuan drop-off."""
+        """Dipanggil saat salah satu robot tiba di rak tujuan drop-off dan menaruh kargo."""
+        if self.selected_dropoff_shelf:
+            self.selected_dropoff_shelf.place_cargo("Industrial Package")
+
+    def _on_robot_finish(self, robot: AGVRobot):
+        """Dipanggil saat salah satu robot telah kembali dan standby di stasiun docking asalnya (Leg 3 selesai)."""
         if not self.first_to_arrive:
-            # Robot pertama yang mencapai garis akhir!
             self.first_to_arrive = f"{robot.robot_name} ({robot.algo_label})"
-            if self.selected_dropoff_shelf:
-                self.selected_dropoff_shelf.place_cargo("Industrial Package")
+            self.arrival_delta_time = time.time() - self.race_start_time
 
     def reset_race(self):
         """Mereset seluruh arena, posisi robot, dan seleksi rak."""
@@ -510,6 +530,9 @@ class MissionManager:
         self.race_elapsed_time = 0.0
         return True
 
+    # Alias kompatibilitas
+    trigger_zone_transfer_mission = dispatch_zone_transfer
+
     def execute_zone_transition(self):
         """Memulai sekuens transisi ruangan antar-zona dengan efek fade-out kamera."""
         if self.is_transitioning:
@@ -542,17 +565,47 @@ class MissionManager:
         self._sync_robot_context()
         self._refresh_charging_markers()
 
-        # Teleportasi robot kembali ke titik Start dock dan isi daya baterai penuh
-        self.robot_alpha.reset_to_dock()
-        self.robot_beta.reset_to_dock()
+        # 1. Teleportasi robot ke sel grid tepat di depan Transfer Gate (keluar dari gerbang)
+        gate_alpha = (33, 12)
+        gate_beta = (33, 14)
+        if not self.graph.is_walkable(gate_alpha[0], gate_alpha[1]):
+            gate_alpha = (33, 13)
+        if not self.graph.is_walkable(gate_beta[0], gate_beta[1]):
+            gate_beta = (33, 13)
+
+        self.robot_alpha.clear_trail()
+        self.robot_beta.clear_trail()
+        self.robot_alpha.position = grid_to_world(gate_alpha[0], gate_alpha[1], 0.0)
+        self.robot_beta.position = grid_to_world(gate_beta[0], gate_beta[1], 0.0)
+        self.robot_alpha.rotation_y = -90.0  # Menghadap ke barat (masuk ke dalam gudang)
+        self.robot_beta.rotation_y = -90.0
+        self.robot_alpha.deck_cargo.enabled = False
+        self.robot_beta.deck_cargo.enabled = False
+
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
+
+        # 2. Isi penuh baterai mereka
         self.robot_alpha.recharge_full()
         self.robot_beta.recharge_full()
 
+        # Sambungkan callback kedatangan di base dock
+        self.robot_alpha.on_finish_callback = self._on_robot_finish
+        self.robot_beta.on_finish_callback = self._on_robot_finish
+
+        # Set state non-idle agar force_return_to_dock mengkalkulasi rute pulang
+        self.robot_alpha.state = RobotState.MOVING_TO_DROPOFF
+        self.robot_beta.state = RobotState.MOVING_TO_DROPOFF
+
+        # 3. Panggil force_return_to_dock agar robot mengkalkulasi rute mandiri pulang ke Twin Dock
+        self.robot_alpha.force_return_to_dock(self.graph, self.current_heuristic_fn)
+        self.robot_beta.force_return_to_dock(self.graph, self.current_heuristic_fn)
+
         self.mission_type = MissionType.STANDARD_DELIVERY
-        self.is_race_active = False
+        self.is_race_active = True
         self.race_finished = False
+        self.race_start_time = time.time()
+        self.race_elapsed_time = 0.0
 
         # Fade-In kembali ke tampilan normal
         camera.overlay.animate_color(color.clear, duration=1.0)
@@ -593,14 +646,19 @@ class MissionManager:
 
     def _check_forklift_collision_threats(self):
         """
-        Memeriksa apakah Forklift (atau 1 sel di depannya) memotong rute aktif AGV Alpha atau Beta.
+        Memeriksa apakah salah satu dari unit Forklift memotong rute aktif AGV Alpha atau Beta.
         Menerapkan edge-triggering dan deteksi perubahan zona ancaman untuk menjaga frame rate 60 FPS
         (tidak memanggil A* dan GBFS setiap frame, hanya saat sel rute terancam).
         """
-        if not self.forklift or not self.is_race_active or self.race_finished:
+        fl_list = getattr(self, 'forklifts', None) or ([self.forklift] if self.forklift else [])
+        if not fl_list or not self.is_race_active or self.race_finished:
             return
 
-        threats = self.forklift.get_threatened_coords()
+        threats: Set[Coord] = set()
+        for fl in fl_list:
+            if hasattr(fl, 'get_threatened_coords'):
+                threats.update(fl.get_threatened_coords())
+
         if threats == self._last_forklift_threats:
             return
 

@@ -70,8 +70,16 @@ def run_warehouse_simulation():
             trail_offset_x=BETA_TRAIL_OFFSET_X, trail_offset_y=BETA_TRAIL_OFFSET_Y,
         )
 
-        mission_mgr = MissionManager(graph=graph, scene=scene, robot_alpha=robot_alpha, robot_beta=robot_beta)
-        if scene.forklift:
+        # 4. Inisialisasi Manajer Misi & Interaksi Raycast
+        mission_mgr = MissionManager(
+            graph=graph,
+            scene=scene,
+            robot_alpha=robot_alpha,
+            robot_beta=robot_beta,
+        )
+        if hasattr(scene, 'forklifts') and scene.forklifts:
+            mission_mgr.set_forklifts(scene.forklifts)
+        elif scene.forklift:
             mission_mgr.set_forklift(scene.forklift)
 
         interaction_sys = InteractionSystem(mission_manager=mission_mgr, scene=scene)
@@ -81,7 +89,16 @@ def run_warehouse_simulation():
         app_state["ui_controller"] = ui_ctrl
         app_state["ready"] = True
 
-        print("\nSIMULATOR BERHASIL DIMUAT!\n")
+        print("\n" + "=" * 70)
+        print("SIMULATOR GUDANG 3D 35x25 BERHASIL DIMUAT LENGKAP!")
+        print("Fitur Peta & Optimasi Performa Aktif:")
+        print("  - [Unified Twin Dock]  : Titik Start Kembar di (17, 1) & (18, 1)")
+        print("  - [3 AI Forklift]      : Moving Obstacles Patroli Otonom Mandiri")
+        print("  - [Auto-Return Base]   : Misi 3-Leg (Pickup -> Dropoff -> Dock)")
+        print("  - [Weighted Terrain]   : Tumpahan Oli & Speed Boost Pad")
+        print("  - [Kamera POV AGV]     : Dashcam First-Person View Alpha & Beta")
+        print("  - [Modern Bottom Dock] : Dashboard Glassmorphism Terpadu")
+        print("=" * 70 + "\n")
 
     scene = WarehouseScene(graph=graph, on_complete=on_environment_ready)
 

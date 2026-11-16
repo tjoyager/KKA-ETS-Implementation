@@ -1,19 +1,21 @@
 """
 forklift_controller.py
 ======================
-Pengendali Rintangan Bergerak Dinamis (User-Controlled Moving Obstacle).
-Memungkinkan pengguna mengendalikan unit Forklift industri secara interaktif menggunakan kontrol WASD.
-Pergerakan Forklift secara real-time memperbarui matriks WarehouseGraph100 dan memicu
-dynamic replanning bagi AGV Alpha (A*) dan Beta (GBFS) jika lintasan mereka terancam.
+Pengendali Rintangan Bergerak Dinamis Otonom (Autonomous Moving Obstacle).
+Forklift berpatroli secara mandiri (AI Patrol - Random Wandering dengan preferensi maju lurus)
+di lorong-lorong gudang 35x25 tanpa memerlukan input manual pengguna.
+Pergerakan Forklift secara real-time memperbarui matriks WarehouseGraph100 dalam sub-milidetik,
+memicu Dynamic Collision Avoidance & Replanning bagi AGV Alpha (A*) dan Beta (GBFS)
+jika lintasan aktif mereka terpotong atau terancam.
 """
 
 import math
-from typing import Optional, Set, Tuple
+import random
+from typing import Any, List, Optional, Set, Tuple
 from ursina import (
     Entity,
     Vec3,
     color,
-    held_keys,
     time,
     Text,
     destroy,
@@ -35,24 +37,51 @@ def lerp_angle(a: float, b: float, t: float) -> float:
 
 class ForkliftController(Entity):
     """
-    Entitas Forklift Industri 3D yang dikendalikan oleh User dengan tombol WASD.
-    Mendeteksi tabrakan dengan rak/dinding, memperbarui sel graf secara sub-milidetik,
-    dan melaporkan zona koordinat ancaman (threatened cells) ke sistem navigasi AGV.
+    Entitas Forklift Industri 3D Otonom (AI Patrol / Autonomous Moving Obstacle).
+    Mondar-mandir secara acak dan alami di lorong gudang tanpa menabrak dinding atau rak.
+    Memperbarui sel graf secara sub-milidetik sebelum bergerak, dan melaporkan
+    zona koordinat ancaman (threatened cells) ke MissionManager AGV.
     """
 
     def __init__(
         self,
         graph: WarehouseGraph100,
         start_coord: Optional[Coord] = None,
-        speed: float = 5.2,
+        speed: float = 1.5,
+        move_speed: float = 1.5,
+        control_scheme: str = "wasd",
+        name: Optional[str] = None,
+        chassis_color: Optional[Tuple[int, int, int]] = None,
         **kwargs,
     ):
         self.graph = graph
-        self.speed = speed
+        self.control_scheme = control_scheme.lower()
+
+        # Parameter AI Patroli Otonom
+        self.is_moving: bool = False
+        self.move_speed: float = float(move_speed)  # Detik per petak grid (default: 1.5 s)
+        self.speed: float = float(speed)
+        self.move_timer: float = 0.0
+        self.wait_timer: float = random.uniform(0.0, 0.25)  # Staggering awal antar forklift
+
+        if self.control_scheme == "arrows":
+            self.scheme_label = "AUTO-ARROWS"
+            fl_name = name or "FORKLIFT 2"
+            col = chassis_color or (240, 195, 20)
+        elif self.control_scheme == "ijkl":
+            self.scheme_label = "AUTO-IJKL"
+            fl_name = name or "FORKLIFT 3"
+            col = chassis_color or (220, 50, 45)
+        else:
+            self.scheme_label = "AUTO-WASD"
+            fl_name = name or "FORKLIFT 1"
+            col = chassis_color or (235, 125, 25)
+
+        self.chassis_rgb = col
+        self.display_name = fl_name
 
         # Cari koordinat awal lorong kosong yang valid jika tidak ditentukan
         if start_coord is None:
-            # Tempatkan di lorong tengah arena
             cand = (17, 11)
             if not self.graph.is_walkable(cand[0], cand[1]):
                 found = False
@@ -66,26 +95,35 @@ class ForkliftController(Entity):
                         break
             start_coord = cand
 
+        self.start_coord: Coord = start_coord
+        self.current_coord: Coord = start_coord
         self.current_grid_coord: Coord = start_coord
+        self.target_coord: Optional[Coord] = start_coord
         self.last_grid_coord: Optional[Coord] = None
         self.last_move_dir: Tuple[int, int] = (0, 1)  # Menghadap utara secara default
+
         spawn_pos = grid_to_world(start_coord[0], start_coord[1], 0.0)
+        self.start_pos: Vec3 = Vec3(spawn_pos.x, spawn_pos.y, spawn_pos.z)
+        self.target_pos: Vec3 = Vec3(spawn_pos.x, spawn_pos.y, spawn_pos.z)
+        self.target_rot: float = 0.0
 
         super().__init__(
             position=spawn_pos,
             **kwargs,
         )
+        self.name = fl_name
+        self.forklift_id: int = id(self)
 
         # ---------------------------------------------------------------------
         # VISUAL FORKLIFT INDUSTRI 3D
         # ---------------------------------------------------------------------
-        # 1. Badan / Chassis Utama (Hazard Industrial Orange)
+        # 1. Badan / Chassis Utama
         self.chassis = Entity(
             parent=self,
             model='cube',
             position=Vec3(0, 0.35, 0),
             scale=Vec3(0.84, 0.45, 1.15),
-            color=color.rgb32(235, 125, 25),
+            color=color.rgb32(*self.chassis_rgb),
             shader=lit_with_shadows_shader,
         )
         self.chassis.cast_shadows = True
@@ -167,13 +205,13 @@ class ForkliftController(Entity):
             color=color.yellow,
         )
 
-        # 6. Label Billboard Pengendalian User
+        # 6. Label Billboard Pengenal Entitas Otonom
         self.label = Text(
             parent=self,
-            text="FORKLIFT [WASD]",
+            text=f"{self.display_name} [{self.scheme_label}]",
             position=Vec3(0, 2.2, 0),
             scale=2.2,
-            color=color.rgb32(245, 145, 30),
+            color=color.rgb32(*self.chassis_rgb),
             origin=(0, 0),
             billboard=True,
         )
@@ -191,126 +229,186 @@ class ForkliftController(Entity):
                 )
 
         # Inisialisasi rintangan sel awal di graf
-        self.graph.update_forklift_cell(None, self.current_grid_coord)
-        self.last_grid_coord = self.current_grid_coord
-        self.enabled_control = True
+        self.graph.update_forklift_cell(None, self.current_coord, forklift_id=self.forklift_id)
+        self.last_grid_coord = self.current_coord
+        self.enabled_control: bool = True
 
     def set_control_enabled(self, enabled: bool):
-        """Mengaktifkan atau menonaktifkan kendali keyboard WASD (misal saat Free-Cam aktif)."""
+        """Mengaktifkan atau menonaktifkan AI patroli (misal saat Free-Cam aktif)."""
         self.enabled_control = enabled
         if hasattr(self, 'label') and self.label:
             if enabled:
-                self.label.text = "FORKLIFT [WASD]"
-                self.label.color = color.rgb32(245, 145, 30)
+                self.label.text = f"{self.display_name} [{self.scheme_label}]"
+                self.label.color = color.rgb32(*self.chassis_rgb)
             else:
-                self.label.text = "FORKLIFT [STANDBY]"
+                self.label.text = f"{self.display_name} [STANDBY]"
                 self.label.color = color.rgb32(180, 185, 195)
 
+    def think_next_move(self) -> Optional[Coord]:
+        """
+        Logika Pemilihan Rute Acak (Random Wandering) Otonom:
+        1. Mengambil seluruh petak tetangga 4-arah (Kiri, Kanan, Atas, Bawah) dari self.current_coord.
+        2. Memfilter petak yang benar-benar is_walkable (bebas rak, dinding, dan forklift lain).
+        3. Memberikan pembobotan alami (preferensi maju lurus) agar tidak bolak-balik di tempat:
+           - Maju lurus (searah last_move_dir): bobot 6.0
+           - Belok 90 derajat (kiri / kanan): bobot 2.0
+           - Mundur 180 derajat: bobot 0.3 (hanya jika jalan buntu)
+        4. Tepat sebelum mulai bergerak, memanggil graph.update_forklift_cell(old_coord, new_coord, self.forklift_id).
+        5. Mengatur orientasi target_rot dan memicu interpolasi translasi mulus ke target_pos.
+        """
+        if self.is_moving or not getattr(self, 'enabled_control', True):
+            return None
+
+        cx, cy = self.current_coord
+
+        # 1. Dapatkan daftar tetangga 4-arah yang valid
+        neighbors = self.graph.get_neighbors(cx, cy, allow_diagonal=False)
+        candidates = [c for c in neighbors if self.graph.is_walkable(c[0], c[1])]
+
+        # Hindari masuk ke docking station AGV jika ada rute lorong lain yang tersedia
+        dock_coords = {
+            getattr(self.graph, 'dock_alpha', None),
+            getattr(self.graph, 'dock_beta', None),
+        }
+        non_dock = [c for c in candidates if c not in dock_coords]
+        if non_dock:
+            candidates = non_dock
+
+        if not candidates:
+            # Tidak ada jalan keluar saat ini (terjebak sementara), tunggu sejenak
+            self.wait_timer = 0.5
+            return None
+
+        # 2. Pembobotan terarah (Preferensi Maju Lurus)
+        weights: List[float] = []
+        reverse_dir = (-self.last_move_dir[0], -self.last_move_dir[1])
+
+        for cand in candidates:
+            cand_dir = (cand[0] - cx, cand[1] - cy)
+            if cand_dir == self.last_move_dir:
+                weights.append(6.0)   # Maju lurus menyusuri lorong
+            elif cand_dir == reverse_dir:
+                weights.append(0.3)   # Mundur/balik arah hanya jika terpaksa
+            else:
+                weights.append(2.0)   # Belok 90 derajat di persimpangan
+
+        next_coord: Coord = random.choices(candidates, weights=weights, k=1)[0]
+
+        # 3. Hitung arah dan rotasi hadap baru
+        dir_x = next_coord[0] - cx
+        dir_y = next_coord[1] - cy
+        self.last_move_dir = (dir_x, dir_y)
+
+        # 4. UPDATE GRAF SUB-MILIDETIK SEBELUM BERGERAK
+        # Memblokir petak baru segera sehingga AGV langsung menghitung ulang rute jika terancam
+        old_coord = self.current_coord
+        self.graph.update_forklift_cell(old_coord, next_coord, forklift_id=self.forklift_id)
+
+        self.last_grid_coord = old_coord
+        self.current_coord = next_coord
+        self.current_grid_coord = next_coord
+        self.target_coord = next_coord
+
+        # 5. Persiapkan parameter interpolasi posisi & rotasi 3D
+        start_world = grid_to_world(old_coord[0], old_coord[1], 0.0)
+        target_world = grid_to_world(next_coord[0], next_coord[1], 0.0)
+
+        self.start_pos = Vec3(start_world.x, getattr(self, 'y', 0.0), start_world.z)
+        self.target_pos = Vec3(target_world.x, getattr(self, 'y', 0.0), target_world.z)
+        self.target_rot = math.degrees(math.atan2(dir_x, dir_y))
+
+        self.is_moving = True
+        self.move_timer = 0.0
+
+        return next_coord
+
     def update(self):
-        """Loop per frame: membaca held_keys WASD, translasi & rotasi halus, dan sinkronisasi graf."""
+        """Loop per frame: animasi beacon strobo, otomasi AI patroli, dan interpolasi pergerakan halus."""
         # 1. Animasi Kedip Strobo Beacon Kuning
         blink = (int(time.time() * 6.0) % 2) == 0
-        self.beacon.color = color.yellow if blink else color.orange
+        if hasattr(self, 'beacon') and self.beacon:
+            self.beacon.color = color.yellow if blink else color.orange
 
-        # Jika kontrol dinonaktifkan (misal presenter sedang dalam mode Free-Cam), abaikan input
+        # Jika kontrol dinonaktifkan (misal mode Free-Cam aktif), hentikan pergerakan
         if not getattr(self, 'enabled_control', True):
             return
 
-        # 2. Deteksi Input WASD / Tombol Panah
-        input_x = 0.0
-        input_z = 0.0
+        dt = getattr(time, 'dt', 0.0)
 
-        if held_keys['w'] or held_keys['up arrow']:
-            input_z += 1.0
-        if held_keys['s'] or held_keys['down arrow']:
-            input_z -= 1.0
-        if held_keys['d'] or held_keys['right arrow']:
-            input_x += 1.0
-        if held_keys['a'] or held_keys['left arrow']:
-            input_x -= 1.0
-
-        if input_x == 0.0 and input_z == 0.0:
+        # 2. Pengecekan AI Patroli: Jika sedang diam, pikirkan langkah selanjutnya
+        if not self.is_moving:
+            if getattr(self, 'wait_timer', 0.0) > 0:
+                self.wait_timer -= dt
+                return
+            self.think_next_move()
             return
 
-        # Normalisasi vektor input agar pergerakan diagonal tidak lebih cepat
-        length = math.hypot(input_x, input_z)
-        if length > 0.001:
-            input_x /= length
-            input_z /= length
+        # 3. Interpolasi Pergerakan Halus Antar Petak (Smooth Lerp)
+        if dt > 0:
+            self.move_timer += dt
+            t = min(1.0, self.move_timer / max(0.001, self.move_speed))
 
-        # Update orientasi arah pergerakan diskret untuk prediksi sel depan
-        dir_gx = 1 if input_x > 0.3 else (-1 if input_x < -0.3 else 0)
-        dir_gz = 1 if input_z > 0.3 else (-1 if input_z < -0.3 else 0)
-        if dir_gx != 0 or dir_gz != 0:
-            self.last_move_dir = (dir_gx, dir_gz)
+            # Translasi posisi secara halus
+            self.x = self.start_pos.x + (self.target_pos.x - self.start_pos.x) * t
+            self.z = self.start_pos.z + (self.target_pos.z - self.start_pos.z) * t
 
-        # 3. Rotasi Halus Menghadap Arah Gerak
-        target_rot = math.degrees(math.atan2(input_x, input_z))
-        self.rotation_y = lerp_angle(self.rotation_y, target_rot, time.dt * 12.0)
+            # Rotasi badan forklift secara halus menghadap arah pergerakan
+            self.rotation_y = lerp_angle(self.rotation_y, self.target_rot, min(1.0, dt * 10.0))
 
-        # 4. Translasi Posisi dengan Pengecekan Tabrakan Dinding/Rak
-        step = self.speed * time.dt
-        new_pos_x = self.x + (input_x * step)
-        new_pos_z = self.z + (input_z * step)
-
-        # Pengecekan batas sumbu X
-        test_coord_x = world_to_grid(Vec3(new_pos_x, self.y, self.z))
-        if self._can_move_to(test_coord_x):
-            self.x = new_pos_x
-
-        # Pengecekan batas sumbu Z
-        test_coord_z = world_to_grid(Vec3(self.x, self.y, new_pos_z))
-        if self._can_move_to(test_coord_z):
-            self.z = new_pos_z
-
-        # 5. Sinkronisasi Grid Coordinate & Matriks Graf
-        new_grid_coord = world_to_grid(self.position)
-        if (
-            0 <= new_grid_coord[0] < self.graph.width
-            and 0 <= new_grid_coord[1] < self.graph.height
-            and new_grid_coord != self.current_grid_coord
-        ):
-            self.last_grid_coord = self.current_grid_coord
-            self.current_grid_coord = new_grid_coord
-            self.graph.update_forklift_cell(self.last_grid_coord, self.current_grid_coord)
+            if t >= 1.0:
+                self.position = self.target_pos
+                self.rotation_y = self.target_rot
+                self.is_moving = False
+                self.move_timer = 0.0
 
     def _can_move_to(self, coord: Coord) -> bool:
-        """Memeriksa apakah sel grid tujuan dapat dimasuki oleh forklift (bukan tembok luar/sekat/rak)."""
+        """Memeriksa apakah sel grid tujuan dapat dimasuki oleh forklift."""
         gx, gy = coord
         if not (0 <= gx < self.graph.width and 0 <= gy < self.graph.height):
             return False
-
-        cell = self.graph.grid[gy, gx]
-        # Forklift tidak boleh menembus rak permanen atau balok dinding
-        if cell in (CellType.SHELF_OBSTACLE, CellType.WALL):
-            return False
-        return True
+        return self.graph.is_walkable(gx, gy)
 
     def get_threatened_coords(self) -> Set[Coord]:
         """
         Mengembalikan himpunan sel grid yang terancam/diblokir oleh Forklift:
-        1. Sel yang sedang diduduki Forklift saat ini (`current_grid_coord`).
-        2. Sel tepat 1 petak di depan arah hadap/gerak Forklift (`front_coord`).
+        1. Sel yang sedang diduduki Forklift saat ini (`current_coord`).
+        2. Sel tujuan pergerakan aktif (`target_coord`).
+        3. Sel tepat 1 petak di depan arah hadap/gerak Forklift (`front_coord`).
         Digunakan oleh AGV Alpha & Beta untuk collision avoidance & dynamic replanning.
         """
-        threatened = {self.current_grid_coord}
-        fx = self.current_grid_coord[0] + self.last_move_dir[0]
-        fy = self.current_grid_coord[1] + self.last_move_dir[1]
+        threatened = {self.current_coord}
+        if hasattr(self, 'target_coord') and self.target_coord:
+            threatened.add(self.target_coord)
+        fx = self.current_coord[0] + self.last_move_dir[0]
+        fy = self.current_coord[1] + self.last_move_dir[1]
         if 0 <= fx < self.graph.width and 0 <= fy < self.graph.height:
             threatened.add((fx, fy))
         return threatened
 
     def reset_position(self, coord: Optional[Coord] = None):
         """Mereset posisi Forklift ke koordinat aman."""
-        old = self.current_grid_coord
-        target = coord or (17, 11)
-        self.position = grid_to_world(target[0], target[1], 0.0)
+        old = self.current_coord
+        target = coord or getattr(self, 'start_coord', (17, 11))
+        spawn_pos = grid_to_world(target[0], target[1], 0.0)
+
+        self.position = spawn_pos
         self.rotation_y = 0.0
+        self.current_coord = target
         self.current_grid_coord = target
+        self.target_coord = target
         self.last_grid_coord = old
-        self.graph.update_forklift_cell(old, target)
+        self.last_move_dir = (0, 1)
+
+        self.is_moving = False
+        self.move_timer = 0.0
+        self.wait_timer = 0.0
+        self.start_pos = Vec3(spawn_pos.x, spawn_pos.y, spawn_pos.z)
+        self.target_pos = Vec3(spawn_pos.x, spawn_pos.y, spawn_pos.z)
+        self.target_rot = 0.0
+
+        self.graph.update_forklift_cell(old, target, forklift_id=self.forklift_id)
 
     def on_destroy(self):
         """Membersihkan tanda sel rintangan Forklift saat entitas dihancurkan."""
-        if hasattr(self, 'graph') and self.graph and self.current_grid_coord:
-            self.graph.update_forklift_cell(self.current_grid_coord, None)
+        if hasattr(self, 'graph') and self.graph and hasattr(self, 'current_coord') and self.current_coord:
+            self.graph.update_forklift_cell(self.current_coord, None, forklift_id=self.forklift_id)

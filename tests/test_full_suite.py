@@ -143,6 +143,7 @@ def run_full_suite():
     assert fl.enabled_control == False
     fl.set_control_enabled(True)
     assert fl.enabled_control == True
+    fl.on_destroy()
     print("  ✓ Proteksi kendali input Forklift saat Free-Cam aktif berjalan sempurna!")
 
     # --- PENGUJIAN FITUR 8: WEIGHTED TERRAIN AI & FITUR TAHAP 5 ---
@@ -193,9 +194,110 @@ def run_full_suite():
     r_alpha.spawn_floating_text("+TEST FX+")
     print("  ✓ Visual FX Radar Pulse & 3D Floating Popup terpicu sukses")
 
+    # --- PENGUJIAN FITUR 9: AUTO-RETURN TO BASE (MISI LEG 3) ---
+    print("\n[UJI 9] Auto-Return to Base (Misi Leg 3 - Unified Twin Dock):")
+    # Dispatch misi baru untuk menguji 3-leg cycle
+    s_p = MagicMock(); s_p.shelf_data = shelves[6]
+    s_d = MagicMock(); s_d.shelf_data = shelves[7]
+    mgr.dispatch_race(s_p, s_d)
+    
+    assert mgr.dual_plan is not None
+    assert mgr.dual_plan.alpha_plan.leg3 is not None, "Leg 3 Alpha (Return to Dock) harus terencana"
+    assert mgr.dual_plan.beta_plan.leg3 is not None, "Leg 3 Beta (Return to Dock) harus terencana"
+    assert mgr.dual_plan.alpha_plan.leg3.path[-1] == SPAWN_ALPHA, f"Leg 3 Alpha harus berakhir di {SPAWN_ALPHA}"
+    assert mgr.dual_plan.beta_plan.leg3.path[-1] == SPAWN_BETA, f"Leg 3 Beta harus berakhir di {SPAWN_BETA}"
+    print(f"  ✓ Leg 3 Terencana Sempurna: Alpha -> {SPAWN_ALPHA}, Beta -> {SPAWN_BETA}")
+    
+    # Simulasikan robot menyelesaikan Leg 1 (Pickup)
+    r_alpha.state = RobotState.LOADING_CARGO
+    r_alpha._resume_after_action()
+    assert r_alpha.state == RobotState.MOVING_TO_DROPOFF
+    assert r_alpha.deck_cargo.enabled == True
+    
+    # Simulasikan robot menyelesaikan Leg 2 (Dropoff)
+    r_alpha.state = RobotState.UNLOADING_CARGO
+    # Di Tahap Akhir Overhaul, setelah unloading, robot TIDAK boleh FINISHED!
+    r_alpha._resume_after_action()
+    assert r_alpha.state == RobotState.RETURNING_TO_DOCK, f"State robot harus RETURNING_TO_DOCK, got {r_alpha.state}"
+    assert r_alpha.deck_cargo.enabled == False
+    assert len(r_alpha.active_grid_path) > 0
+    assert r_alpha.active_grid_path[-1] == SPAWN_ALPHA
+    print(f"  ✓ Leg 2 Selesai -> Transisi Otomatis ke RETURNING_TO_DOCK (Menuju Dock {SPAWN_ALPHA})")
+    
+    # Simulasikan robot tiba di Dock asalnya (Leg 3 selesai)
+    r_alpha.waypoint_idx = len(r_alpha.active_waypoints)
+    r_alpha._handle_leg_completion()
+    assert r_alpha.state == RobotState.FINISHED, "Robot harus FINISHED setelah menyentuh Dock asalnya"
+    assert r_alpha.finish_time is not None
+    assert r_alpha.battery == 100.0, "Baterai otomatis terisi penuh (recharge) di docking station"
+    print("  ✓ Leg 3 Selesai -> Robot FINISHED, docked & fully recharged!")
+
+    # --- PENGUJIAN FITUR 10: UNIFIED TWIN DOCK & MULTI-FORKLIFT (3 UNITS) ---
+    print("\n[UJI 10] Unified Twin Docking Station & Multi-Forklift (3 Unit):")
+    assert SPAWN_ALPHA == (17, 1), f"SPAWN_ALPHA harus (17, 1), got {SPAWN_ALPHA}"
+    assert SPAWN_BETA == (18, 1), f"SPAWN_BETA harus (18, 1), got {SPAWN_BETA}"
+    assert graph.grid[1, 17] == CellType.DOCK
+    assert graph.grid[1, 18] == CellType.DOCK
+    print(f"  ✓ Unified Twin Dock terkonfirmasi di grid {SPAWN_ALPHA} & {SPAWN_BETA}")
+
+    # Inisialisasi 3 Forklift dengan kontrol independen
+    fl_center = ForkliftController(graph=graph, start_coord=(17, 11), control_scheme="wasd", name="Forklift Tengah")
+    fl_left = ForkliftController(graph=graph, start_coord=(5, 7), control_scheme="arrows", name="Forklift Kiri")
+    fl_top = ForkliftController(graph=graph, start_coord=(23, 20), control_scheme="ijkl", name="Forklift Atas")
+    
+    assert fl_center.control_scheme == "wasd"
+    assert fl_left.control_scheme == "arrows"
+    assert fl_top.control_scheme == "ijkl"
+    
+    # Registrasi ke MissionManager
+    mgr.set_forklifts([fl_center, fl_left, fl_top])
+    assert len(mgr.forklifts) == 3
+    print("  ✓ 3 Forklift (WASD, Arrows, IJKL) berhasil diinstansiasi dan didaftarkan ke MissionManager")
+
+    # Uji pergerakan multiset cell di graph
+    assert not graph.is_walkable(5, 7)
+    assert not graph.is_walkable(23, 20)
+    
+    # Forklift kiri bergerak dari (5, 7) ke (5, 8)
+    graph.update_forklift_cell((5, 7), (5, 8), forklift_id=id(fl_left))
+    assert graph.is_walkable(5, 7), "Sel lama (5, 7) harus kembali walkable"
+    assert not graph.is_walkable(5, 8), "Sel baru (5, 8) harus non-walkable"
+    assert not graph.is_walkable(23, 20), "Sel forklift lain (23, 20) tetap aman terisolasi"
+    print("  ✓ Multiset grid tracking untuk 3 Forklift berjalan independen tanpa bentrok")
+
+    # --- PENGUJIAN AI PATROL (AUTONOMOUS MOVING OBSTACLES) ---
+    assert fl_center.is_moving == False
+    assert fl_center.move_speed == 1.5
+    assert fl_center.current_coord == (17, 11)
+    
+    old_c = fl_center.current_coord
+    chosen_c = fl_center.think_next_move()
+    assert chosen_c is not None
+    assert fl_center.is_moving == True
+    assert fl_center.current_coord == chosen_c
+    assert not graph.is_walkable(chosen_c[0], chosen_c[1]), "Sel tujuan AI harus diblokir di graf"
+    assert graph.is_walkable(old_c[0], old_c[1]), "Sel lama harus langsung dibebaskan"
+    assert chosen_c in fl_center.get_threatened_coords()
+    print(f"  ✓ Autonomous Patrol: think_next_move({old_c}) -> {chosen_c}, graf terblokir & is_moving aktif")
+
+    # Uji 25 langkah wandering acak bebas tabrakan
+    fl_center.is_moving = False
+    for step_i in range(25):
+        cur = fl_center.current_coord
+        nxt = fl_center.think_next_move()
+        assert nxt is not None, f"Langkah {step_i}: AI Forklift harus selalu menemukan petak valid"
+        assert graph.grid[nxt[1], nxt[0]] == CellType.FORKLIFT
+        assert not graph.is_walkable(nxt[0], nxt[1])
+        fl_center.is_moving = False  # Simulasikan gerakan selesai
+    print(f"  ✓ 25 langkah AI Random Wandering berhasil tanpa collision rak/dinding (Posisi akhir: {fl_center.current_coord})")
+
     print("\n" + "=" * 50)
-    print("SELURUH TEST SUITE OVERHAUL (TAHAP 1-5) LOLOS 100%!")
+    print("SELURUH TEST SUITE OVERHAUL (TAHAP 1-5 + TAHAP AKHIR) LOLOS 100%!")
     print("==================================================")
+
+
+def test_full_suite():
+    run_full_suite()
 
 
 if __name__ == "__main__":

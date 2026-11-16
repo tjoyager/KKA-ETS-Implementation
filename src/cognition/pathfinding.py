@@ -40,9 +40,10 @@ class SearchResult:
 
 @dataclass
 class MissionLegs:
-    """Rute lengkap dua etape: Spawn -> Pick-up -> Drop-off."""
+    """Rute lengkap misi 3 etape: Spawn -> Pick-up -> Drop-off -> Return to Base."""
     leg1: SearchResult   # Spawn ke Pick-up
     leg2: SearchResult   # Pick-up ke Drop-off
+    leg3: Optional[SearchResult] = None  # Drop-off ke Spawn (Auto-Return to Base)
     full_path: List[Coord] = field(default_factory=list)
     total_cost: float = 0.0
     total_nodes_explored: int = 0
@@ -50,10 +51,12 @@ class MissionLegs:
 
     @property
     def visited_nodes(self) -> List[Coord]:
-        """Akumulasi seluruh simpul yang dieksplorasi di kedua etape misi."""
+        """Akumulasi seluruh simpul yang dieksplorasi di ketiga etape misi."""
         nodes = list(self.leg1.explored_order)
         if self.leg2 and self.leg2.explored_order:
             nodes.extend(self.leg2.explored_order)
+        if self.leg3 and self.leg3.explored_order:
+            nodes.extend(self.leg3.explored_order)
         return nodes
 
 
@@ -339,11 +342,12 @@ class DualPathPlanner:
         start_pos: Coord,
         pickup_pos: Coord,
         dropoff_pos: Coord,
+        return_pos: Optional[Coord] = None,
         algo_name: str = "A*",
         heuristic: HeuristicFunc = manhattan_distance,
         allow_diagonal: bool = False,
     ) -> MissionLegs:
-        """Menghitung rute dua tahap: Start -> Pick-up, lalu Pick-up -> Drop-off."""
+        """Menghitung rute tiga tahap: Start -> Pick-up -> Drop-off -> Return to Base."""
         search_fn = a_star_search if "A*" in algo_name else greedy_best_first_search
 
         # Etape 1: Dari titik spawn ke titik jemput (Pick-up)
@@ -351,6 +355,11 @@ class DualPathPlanner:
 
         # Etape 2: Dari titik jemput ke titik antar (Drop-off)
         leg2 = search_fn(graph, pickup_pos, dropoff_pos, heuristic, allow_diagonal)
+
+        # Etape 3: Dari titik antar kembali ke dock asal (Auto-Return to Base)
+        leg3 = None
+        if return_pos:
+            leg3 = search_fn(graph, dropoff_pos, return_pos, heuristic, allow_diagonal)
 
         # Gabungkan rute utuh (hindari duplikasi titik temu)
         full_path = []
@@ -361,14 +370,20 @@ class DualPathPlanner:
                 full_path.extend(leg2.path[1:])
             else:
                 full_path.extend(leg2.path)
+        if leg3 and leg3.success:
+            if full_path and leg3.path and full_path[-1] == leg3.path[0]:
+                full_path.extend(leg3.path[1:])
+            else:
+                full_path.extend(leg3.path)
 
-        total_cost = leg1.cost + leg2.cost
-        total_nodes = leg1.nodes_explored + leg2.nodes_explored
-        total_time = leg1.execution_time_ms + leg2.execution_time_ms
+        total_cost = leg1.cost + leg2.cost + (leg3.cost if leg3 else 0.0)
+        total_nodes = leg1.nodes_explored + leg2.nodes_explored + (leg3.nodes_explored if leg3 else 0)
+        total_time = leg1.execution_time_ms + leg2.execution_time_ms + (leg3.execution_time_ms if leg3 else 0.0)
 
         return MissionLegs(
             leg1=leg1,
             leg2=leg2,
+            leg3=leg3,
             full_path=full_path,
             total_cost=total_cost,
             total_nodes_explored=total_nodes,
@@ -385,19 +400,25 @@ class DualPathPlanner:
         dropoff_access: Coord,
         heuristic: HeuristicFunc = manhattan_distance,
         allow_diagonal: bool = False,
+        return_to_dock: bool = True,
     ) -> DualRacePlan:
         """
-        Kalkulasi rute simultan untuk kedua robot AGV:
+        Kalkulasi rute simultan untuk kedua robot AGV (Leg 1, Leg 2, Leg 3):
         - AGV Alpha menggunakan A* Search
         - AGV Beta menggunakan Greedy Best-First Search
         """
+        ret_alpha = spawn_alpha if return_to_dock else None
+        ret_beta = spawn_beta if return_to_dock else None
+
         plan_alpha = cls.plan_mission_legs(
             graph, spawn_alpha, pickup_access, dropoff_access,
+            return_pos=ret_alpha,
             algo_name="A*", heuristic=heuristic, allow_diagonal=allow_diagonal,
         )
 
         plan_beta = cls.plan_mission_legs(
             graph, spawn_beta, pickup_access, dropoff_access,
+            return_pos=ret_beta,
             algo_name="GBFS", heuristic=heuristic, allow_diagonal=allow_diagonal,
         )
 
