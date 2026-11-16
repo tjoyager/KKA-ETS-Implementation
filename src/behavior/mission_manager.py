@@ -530,6 +530,9 @@ class MissionManager:
         self.race_elapsed_time = 0.0
         return True
 
+    # Alias kompatibilitas
+    trigger_zone_transfer_mission = dispatch_zone_transfer
+
     def execute_zone_transition(self):
         """Memulai sekuens transisi ruangan antar-zona dengan efek fade-out kamera."""
         if self.is_transitioning:

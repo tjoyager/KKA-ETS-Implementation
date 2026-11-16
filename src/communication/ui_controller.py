@@ -154,7 +154,12 @@ class UIController:
     def trigger_zone_transfer(self):
         """Memicu misi transfer kargo antar-zona (Fitur 2: Menuju Transfer Gate Zone B)."""
         self.interaction_sys.reset_interaction()
-        success = self.mission_mgr.trigger_zone_transfer_mission()
+        if hasattr(self.mission_mgr, 'dispatch_zone_transfer'):
+            success = self.mission_mgr.dispatch_zone_transfer()
+        elif hasattr(self.mission_mgr, 'trigger_zone_transfer_mission'):
+            success = self.mission_mgr.trigger_zone_transfer_mission()
+        else:
+            success = False
         if success:
             from src.communication.interaction_system import InteractionState
             self.interaction_sys.state = InteractionState.RACING
