@@ -6,7 +6,7 @@ Menyimpan konfigurasi grid 35x25, titik docking Start & Goal,
 palet warna robot & tema, rintangan dinding (wall obstacles),
 preset kamera yang disesuaikan, serta parameter rendering visual offset.
 """
-
+import os
 from typing import Tuple
 
 # ============================================================================
@@ -166,7 +166,7 @@ CAMERA_PRESETS = {
 # ============================================================================
 # SISTEM BATERAI AGV & STASIUN PENGISIAN DAYA (CHARGING DOCK)
 # ============================================================================
-BATTERY_DRAIN_PER_GRID: float = 0.15      # % baterai terkuras per 1 sel grid (nerfed agar awet)
+BATTERY_DRAIN_PER_GRID: float = 1.5       # % baterai terkuras per 1 sel grid (diadaptasi dari feature/battery-system)
 BATTERY_CRITICAL_THRESHOLD: float = 20.0  # Batas kritis (%) -> paksa menuju Charging Dock
 BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pulang
 

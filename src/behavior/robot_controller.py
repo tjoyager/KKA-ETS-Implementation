@@ -190,7 +190,7 @@ class AGVRobot(Entity):
 
         # 6. Sistem Manajemen Energi & Baterai AGV
         self.battery: float = 100.0
-        self.battery_drain_rate: float = 0.15  # % kapasitas per langkah petak grid (nerfed agar robot lebih awet)
+        self.battery_drain_rate: float = BATTERY_DRAIN_PER_GRID  # % kapasitas per langkah petak grid (diadaptasi dari feature/battery-system: 1.5%)
         self.is_critical_battery: bool = False
         self.battery_critical_threshold: float = BATTERY_CRITICAL_THRESHOLD
         self.battery_safety_margin: float = BATTERY_SAFETY_MARGIN
@@ -554,9 +554,9 @@ class AGVRobot(Entity):
 
         if hasattr(self, 'graph') and self.graph and hasattr(self.graph, 'terrain_weights'):
             weight = self.graph.terrain_weights.get(curr_grid, 1.0)
-            if weight > 2.0:  # HAZARD_OIL (Cost 5.0 -> Slowdown 0.4x, Drain 2.0x proporsional)
+            if weight > 2.0:  # HAZARD_OIL (Cost 5.0 -> Slowdown 0.4x, Drain 2.5x proporsional)
                 speed_mult = 0.4
-                drain_mult = 2.0
+                drain_mult = 2.5
                 if not getattr(self, '_on_oil', False):
                     self._on_oil = True
                     self.spawn_floating_text("! OIL SLOWDOWN !", color.rgb32(245, 180, 20))
