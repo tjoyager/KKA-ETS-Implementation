@@ -234,7 +234,7 @@ class WarehouseScene(Entity):
     # =========================================================================
     def _setup_lighting(self):
         """Pencahayaan 3D industrial modern."""
-        window.color = color.rgb32(8, 10, 15) # Background luar sangat gelap
+        window.color = color.rgb32(30, 41, 59)  # Background luar sangat gelap
 
         # Cahaya ambient biru redup (membuat bayangan tidak hitam pekat)
         self.ambient = AmbientLight(color=color.rgba(0.15, 0.20, 0.30, 1.0))
