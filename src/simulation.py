@@ -90,7 +90,9 @@ def run_warehouse_simulation():
             robot_alpha=robot_alpha,
             robot_beta=robot_beta,
         )
-        if scene.forklift:
+        if hasattr(scene, 'forklifts') and scene.forklifts:
+            mission_mgr.set_forklifts(scene.forklifts)
+        elif scene.forklift:
             mission_mgr.set_forklift(scene.forklift)
 
         interaction_sys = InteractionSystem(mission_manager=mission_mgr, scene=scene)
@@ -126,7 +128,7 @@ def run_warehouse_simulation():
         print("  - [Heuristik (H)]      : Ganti Heuristik (Manhattan / Euclidean / Chebyshev / Octile)")
         print("  - [Misi Acak (G)]      : Balapan instan acak A* vs GBFS")
         print("  - [Mode HUD (M)]       : Beralih antara Serious (WMS) dan Gamifikasi (Arcade)")
-        print("  - [Kamera (V)]         : Isometrik -> Top-Down -> Follow Alpha -> Follow Beta -> Bebas")
+        print("  - [Kamera (C/F/V)]     : Isometrik -> Top-Down -> POV Alpha (A*) -> POV Beta (GBFS)")
         print("  - [Spasi / R / Esc]    : Jeda / Reset Posisi / Keluar")
         print("=" * 70 + "\n")
 

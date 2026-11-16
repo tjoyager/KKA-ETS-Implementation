@@ -9,7 +9,7 @@ Menyediakan visualisasi rintangan dinding (Wall Obstacles) abu-abu beton kontras
 stasiun docking Start, target Goal, dan penyesuaian kamera terpusat.
 """
 
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from PIL import Image
 from ursina import (
     Entity,
@@ -95,8 +95,9 @@ class WarehouseScene(Entity):
         self.interactive_shelves: Dict[Coord, InteractiveShelf] = {}
         self.free_cam: Optional[EditorCamera] = None
         self.current_cam_mode = "isometrik"
-        self.cam_modes = ["isometrik", "topdown", "free_cam"]
+        self.cam_modes = ["isometrik", "topdown", "pov_alpha", "pov_beta"]
         self.cam_mode_idx = 0
+        self.mission_mgr: Optional[Any] = None
 
         # Kontainer static mesh combining
         self.static_racks_parent: Optional[Entity] = None
@@ -116,6 +117,7 @@ class WarehouseScene(Entity):
         self.dynamic_obstacle_entities: Dict[Coord, Entity] = {}
         self.oil_spill_entities: Dict[Coord, Entity] = {}
         self.boost_pad_entities: Dict[Coord, Entity] = {}
+        self.forklifts: List[Any] = []
         self.forklift = None
 
         # ---------------------------------------------------------------------
@@ -311,7 +313,30 @@ class WarehouseScene(Entity):
         self._setup_camera()
 
         from src.behavior.forklift_controller import ForkliftController
-        self.forklift = ForkliftController(graph=self.graph)
+        # 3 Forklift Industri di 3 Zona Berbeda (Tengah: WASD, Kiri: Arrows, Atas: IJKL)
+        fl_center = ForkliftController(
+            graph=self.graph,
+            start_coord=(17, 11),
+            control_scheme="wasd",
+            name="FORKLIFT 1",
+            chassis_color=(235, 125, 25),
+        )
+        fl_left = ForkliftController(
+            graph=self.graph,
+            start_coord=(5, 7),
+            control_scheme="arrows",
+            name="FORKLIFT 2",
+            chassis_color=(240, 195, 20),
+        )
+        fl_top = ForkliftController(
+            graph=self.graph,
+            start_coord=(23, 20),
+            control_scheme="ijkl",
+            name="FORKLIFT 3",
+            chassis_color=(220, 50, 45),
+        )
+        self.forklifts = [fl_center, fl_left, fl_top]
+        self.forklift = fl_center
         yield
 
         # =====================================================================
@@ -374,54 +399,72 @@ class WarehouseScene(Entity):
         lit_with_shadows_shader.default_input['shadow_blur'] = 0.004
 
     def _build_dock_and_goal_stations(self):
-        """Stasiun pengisian dock pojok kiri bawah dengan aksen neon bergradasi dan platform target Goal."""
+        """Unified Twin Docking Station di area bawah/tengah arena (x=17, 18, y=1) & Platform Target Goal."""
         dock_tower_model = AssetLoader.get_dock_model()
 
-        # Dock Alpha (A* Search) di (1, 1)
         pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
-        # Pad lantai parkir pengisian daya robot Alpha
+        pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.0)
+        mid_pos = (pos_a + pos_b) / 2.0
+
+        # 1. Platform Terpadu Raksasa (Unified Docking Platform)
         Entity(
             model='cube',
-            position=pos_a - Vec3(0, 0.02, 0),
-            scale=Vec3(1.4, 0.05, 1.4),
-            color=color.rgba32(0, 195, 255, 160),
+            position=mid_pos - Vec3(0, 0.025, 0),
+            scale=Vec3(3.2, 0.06, 1.8),
+            color=color.rgba32(18, 24, 34, 230),
         )
-        # Menara charger terminal di tepi dinding barat (belakang robot)
+
+        # 2. Pad Lantai Parkir Alpha (A* Search) - Cyan Neon
+        Entity(
+            model='cube',
+            position=pos_a - Vec3(0, 0.015, 0),
+            scale=Vec3(1.35, 0.065, 1.5),
+            color=color.rgba32(0, 195, 255, 175),
+        )
+        # Menara charger stasiun Alpha di belakang robot
         Entity(
             model=dock_tower_model,
-            position=pos_a + Vec3(-1.0, 0, 0),
-            rotation=Vec3(0, 90, 0),
+            position=pos_a + Vec3(0, 0, -0.75),
+            rotation=Vec3(0, 0, 0),
             scale=Vec3(0.55, 0.65, 0.55),
         )
+
+        # 3. Pad Lantai Parkir Beta (GBFS) - Orange Neon
+        Entity(
+            model='cube',
+            position=pos_b - Vec3(0, 0.015, 0),
+            scale=Vec3(1.35, 0.065, 1.5),
+            color=color.rgba32(255, 140, 0, 175),
+        )
+        # Menara charger stasiun Beta di belakang robot
+        Entity(
+            model=dock_tower_model,
+            position=pos_b + Vec3(0, 0, -0.75),
+            rotation=Vec3(0, 0, 0),
+            scale=Vec3(0.55, 0.65, 0.55),
+        )
+
+        # 4. Header Billboard Terpadu
         Text(
-            text="DOCK ALPHA\n[A* Search]",
-            position=pos_a + Vec3(-1.0, 1.8, 0),
-            scale=1.3,
+            text="UNIFIED TWIN DOCK\n[ A* SEARCH  |  GBFS ]",
+            position=mid_pos + Vec3(0, 2.1, -0.75),
+            scale=1.45,
+            color=color.rgb32(0, 229, 255),
+            billboard=True,
+            origin=(0, 0),
+        )
+        Text(
+            text="ALPHA (A*)",
+            position=pos_a + Vec3(0, 1.55, -0.75),
+            scale=1.1,
             color=color.rgb32(*COLOR_ALPHA_PRIMARY),
             billboard=True,
             origin=(0, 0),
         )
-
-        # Dock Beta (GBFS) di (1, 3)
-        pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.0)
-        # Pad lantai parkir pengisian daya robot Beta
-        Entity(
-            model='cube',
-            position=pos_b - Vec3(0, 0.02, 0),
-            scale=Vec3(1.4, 0.05, 1.4),
-            color=color.rgba32(255, 140, 0, 160),
-        )
-        # Menara charger terminal di tepi dinding barat (belakang robot)
-        Entity(
-            model=dock_tower_model,
-            position=pos_b + Vec3(-1.0, 0, 0),
-            rotation=Vec3(0, 90, 0),
-            scale=Vec3(0.55, 0.65, 0.55),
-        )
         Text(
-            text="DOCK BETA\n[GBFS]",
-            position=pos_b + Vec3(-1.0, 1.8, 0),
-            scale=1.3,
+            text="BETA (GBFS)",
+            position=pos_b + Vec3(0, 1.55, -0.75),
+            scale=1.1,
             color=color.rgb32(*COLOR_BETA_PRIMARY),
             billboard=True,
             origin=(0, 0),
@@ -514,21 +557,76 @@ class WarehouseScene(Entity):
         self.free_cam = EditorCamera(enabled=False)
         self.apply_camera_mode("isometrik")
 
-    def apply_camera_mode(self, mode: str, target_robot_pos: Optional[Vec3] = None):
-        """Mengubah sudut pandang kamera dengan stabilisasi rotasi penuh (anti-gimbal lock)."""
+    def apply_camera_mode(
+        self,
+        mode: str,
+        target_robot_pos: Optional[Vec3] = None,
+        mission_mgr: Optional[Any] = None,
+    ):
+        """
+        Mengubah sudut pandang kamera dengan stabilisasi rotasi penuh (anti-gimbal lock).
+        Mode yang didukung:
+        - 'isometrik': Tampilan arena 35x25 dari sudut atas miring statis.
+        - 'topdown': Tampilan 2D top-down dari atas arena.
+        - 'pov_alpha': Dashcam First-Person view menempel pada visual_body AGV Alpha (A*).
+        - 'pov_beta': Dashcam First-Person view menempel pada visual_body AGV Beta (GBFS).
+        - 'free_cam' / 'bebas': Navigasi kamera bebas melayang.
+        """
         from ursina import scene
+        if mission_mgr is not None:
+            self.mission_mgr = mission_mgr
+        mgr = self.mission_mgr
+
         self.current_cam_mode = mode
         is_free = (mode in ("free_cam", "bebas"))
 
-        # Selalu pastikan kamera terlepas dari free_cam saat beralih ke mode tetap
+        # Pastikan EditorCamera dimatikan jika bukan mode bebas
         if self.free_cam and not is_free:
             self.free_cam.disable()
-            camera.parent = scene
-            # Aktifkan kembali kontrol WASD Forklift saat keluar dari Free-Cam
-            if self.forklift:
+            if hasattr(self, 'forklifts') and self.forklifts:
+                for fl in self.forklifts:
+                    fl.set_control_enabled(True)
+            elif self.forklift:
                 self.forklift.set_control_enabled(True)
 
-        if mode == "isometrik":
+        # Kelola visibilitas label billboard agar tidak menghalangi pandangan dashcam
+        if mgr:
+            if hasattr(mgr, 'robot_alpha') and mgr.robot_alpha:
+                if hasattr(mgr.robot_alpha, 'label_tag'):
+                    mgr.robot_alpha.label_tag.enabled = (mode != "pov_alpha")
+                if hasattr(mgr.robot_alpha, 'battery_bar_bg'):
+                    mgr.robot_alpha.battery_bar_bg.enabled = (mode != "pov_alpha")
+            if hasattr(mgr, 'robot_beta') and mgr.robot_beta:
+                if hasattr(mgr.robot_beta, 'label_tag'):
+                    mgr.robot_beta.label_tag.enabled = (mode != "pov_beta")
+                if hasattr(mgr.robot_beta, 'battery_bar_bg'):
+                    mgr.robot_beta.battery_bar_bg.enabled = (mode != "pov_beta")
+
+        # 1. Mode POV Alpha (First-Person Dashcam A*)
+        if mode == "pov_alpha":
+            target = None
+            if mgr and hasattr(mgr, 'robot_alpha') and mgr.robot_alpha:
+                target = getattr(mgr.robot_alpha, 'visual_body', mgr.robot_alpha)
+            if target:
+                camera.parent = target
+                camera.position = Vec3(0, 1.5, 0.5)
+                camera.rotation = Vec3(10, 0, 0)
+                camera.fov = 68
+
+        # 2. Mode POV Beta (First-Person Dashcam GBFS)
+        elif mode == "pov_beta":
+            target = None
+            if mgr and hasattr(mgr, 'robot_beta') and mgr.robot_beta:
+                target = getattr(mgr.robot_beta, 'visual_body', mgr.robot_beta)
+            if target:
+                camera.parent = target
+                camera.position = Vec3(0, 1.5, 0.5)
+                camera.rotation = Vec3(10, 0, 0)
+                camera.fov = 68
+
+        # 3. Mode Isometrik Arena Statis
+        elif mode == "isometrik":
+            camera.parent = scene
             cfg = CAMERA_PRESETS["isometrik"]
             camera.rotation = Vec3(0, 0, 0)
             camera.position = Vec3(*cfg["pos"])
@@ -536,14 +634,18 @@ class WarehouseScene(Entity):
             camera.look_at(Vec3(*cfg["target"]))
             camera.rotation_z = 0.0
 
+        # 4. Mode Top-Down Arena Statis
         elif mode == "topdown":
+            camera.parent = scene
             cfg = CAMERA_PRESETS["topdown"]
             camera.position = Vec3(*cfg["pos"])
             camera.rotation = Vec3(90, 0, 0)
             camera.fov = cfg["fov"]
             camera.rotation_z = 0.0
 
+        # 5. Follow Mode (Opsional)
         elif mode in ("follow_alpha", "follow_beta"):
+            camera.parent = scene
             cfg = CAMERA_PRESETS.get(mode, {"offset": (0.0, 16.0, -14.0), "fov": 55})
             camera.fov = cfg.get("fov", 55)
             camera.rotation_z = 0.0
@@ -558,21 +660,23 @@ class WarehouseScene(Entity):
                 camera.look_at(target_robot_pos)
                 camera.rotation_z = 0.0
 
-        elif mode in ("pov_alpha", "pov_beta"):
-            camera.fov = 68
-            camera.rotation_z = 0.0
-
+        # 6. Mode Bebas (Free-Cam)
         elif is_free:
+            camera.parent = scene
             if self.free_cam:
                 self.free_cam.position = camera.position
                 self.free_cam.rotation = camera.rotation
                 self.free_cam.enable()
-            # Nonaktifkan kontrol WASD Forklift saat presenter menggunakan Free-Cam
-            if self.forklift:
+            if hasattr(self, 'forklifts') and self.forklifts:
+                for fl in self.forklifts:
+                    fl.set_control_enabled(False)
+            elif self.forklift:
                 self.forklift.set_control_enabled(False)
 
     def cycle_camera_mode(self, target_robot_pos: Optional[Vec3] = None) -> str:
-        """Siklus pergantian sudut kamera (Isometrik -> Topdown -> Free-Cam)."""
+        """Siklus pergantian sudut kamera: Isometrik -> Top-Down -> POV Alpha (A*) -> POV Beta (GBFS) -> Isometrik."""
+        if self.current_cam_mode in self.cam_modes:
+            self.cam_mode_idx = self.cam_modes.index(self.current_cam_mode)
         self.cam_mode_idx = (self.cam_mode_idx + 1) % len(self.cam_modes)
         mode = self.cam_modes[self.cam_mode_idx]
         self.apply_camera_mode(mode, target_robot_pos=target_robot_pos)
@@ -595,25 +699,16 @@ class WarehouseScene(Entity):
             camera.rotation_z = 0.0
 
     def update_pov_camera(self, robot):
-        """Kamera First-Person / Close Hood Chase Cam mengikuti kap robot AGV secara imersif."""
+        """Menjaga kamera First-Person Dashcam POV tetap terpasang pada visual_body robot."""
         if not robot:
             return
         target_ent = getattr(robot, 'visual_body', robot)
         if not target_ent:
             return
-
-        cam_offset = -(target_ent.forward * 1.55) + Vec3(0, 0.95, 0)
-        desired_pos = target_ent.position + cam_offset
-        desired_look = target_ent.position + (target_ent.forward * 4.2) + Vec3(0, 0.35, 0)
-
-        from ursina import time as utime
-        camera.position = Vec3(
-            camera.position.x + (desired_pos.x - camera.position.x) * min(1.0, utime.dt * 14.0),
-            camera.position.y + (desired_pos.y - camera.position.y) * min(1.0, utime.dt * 14.0),
-            camera.position.z + (desired_pos.z - camera.position.z) * min(1.0, utime.dt * 14.0),
-        )
-        camera.look_at(desired_look)
-        camera.rotation_z = 0.0
+        if camera.parent != target_ent:
+            camera.parent = target_ent
+            camera.position = Vec3(0, 1.5, 0.5)
+            camera.rotation = Vec3(10, 0, 0)
 
     # =========================================================================
     # VISUALISASI HEATMAP KOMPUTASI EKSPLORASI NODE (A* VS GBFS)
@@ -852,9 +947,14 @@ class WarehouseScene(Entity):
         self.clear_all_terrain_modifiers()
         self.clear_exploration_heatmap()
 
-        # 4. Terapkan graf baru & sinkronkan Forklift
+        # 4. Terapkan graf baru & sinkronkan 3 Forklift
         self.graph = new_graph
-        if self.forklift:
+        if hasattr(self, 'forklifts') and self.forklifts:
+            spawn_coords = [(17, 11), (5, 7), (23, 20)]
+            for i, fl in enumerate(self.forklifts):
+                fl.graph = new_graph
+                fl.reset_position(spawn_coords[i % len(spawn_coords)])
+        elif self.forklift:
             self.forklift.graph = new_graph
             self.forklift.reset_position((17, 11))
 

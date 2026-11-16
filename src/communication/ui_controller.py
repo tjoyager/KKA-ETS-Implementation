@@ -38,6 +38,7 @@ class UIController:
         self.mission_mgr = mission_manager
         self.interaction_sys = interaction_system
         self.scene = scene
+        self.scene.mission_mgr = mission_manager
 
         # Instansiasi kedua sistem HUD
         self.hud_serious = SeriousHUD()
@@ -125,7 +126,7 @@ class UIController:
 
         # 6. Tombol Kamera
         self.btn_cam = Button(
-            text="[K] Isometrik",
+            text="[C] Isometrik",
             position=Vec3(0, btn_y, 0),
             scale=Vec3(0.125, btn_h, 1),
             color=color.rgb32(50, 70, 95),
@@ -332,24 +333,52 @@ class UIController:
         self.btn_pause.color = color.rgb32(230, 126, 34)
 
     def cycle_camera(self):
-        """Mengganti mode kamera dalam siklus: Isometrik -> Top-Down -> Free-Cam."""
+        """Mengganti mode kamera dalam siklus: Isometrik -> Top-Down -> POV Alpha (A*) -> POV Beta (GBFS) -> Isometrik."""
         new_mode = self.scene.cycle_camera_mode()
-        labels = {
-            "isometrik": "Isometrik",
-            "topdown": "Top-Down",
-            "free_cam": "Free-Cam",
-            "bebas": "Free-Cam",
-        }
-        cam_label = labels.get(new_mode, new_mode.capitalize())
-        self.btn_cam.text = f"[K] {cam_label}"
+        self._update_camera_ui(new_mode)
 
-        if new_mode in ("free_cam", "bebas"):
+    def set_camera(self, mode: str):
+        """Mengatur mode kamera secara langsung dan memperbarui tampilan UI."""
+        self.scene.apply_camera_mode(mode, mission_mgr=self.mission_mgr)
+        self._update_camera_ui(mode)
+
+    def cycle_pov_camera(self):
+        """Pintasan pergantian sudut kamera POV Dashcam First-Person."""
+        self.cycle_camera()
+
+    def _update_camera_ui(self, mode: str):
+        """Memperbarui teks tombol kamera dan prompt text indikator dramatis sesuai mode kamera aktif."""
+        labels = {
+            "isometrik": "[C] Isometrik",
+            "topdown": "[C] Top-Down",
+            "pov_alpha": "[C] POV Alpha",
+            "pov_beta": "[C] POV Beta",
+            "free_cam": "[C] Free-Cam",
+            "bebas": "[C] Free-Cam",
+        }
+        self.btn_cam.text = labels.get(mode, f"[C] {mode.capitalize()}")
+
+        if mode == "pov_alpha":
+            self.btn_cam.color = color.rgb32(0, 160, 230)
+            self.interaction_sys.prompt_text = "[CAM] DASHCAM AKTIF: AGV ALPHA (A*)"
+        elif mode == "pov_beta":
+            self.btn_cam.color = color.rgb32(235, 130, 20)
+            self.interaction_sys.prompt_text = "[CAM] DASHCAM AKTIF: AGV BETA (GBFS)"
+        elif mode == "topdown":
+            self.btn_cam.color = color.rgb32(50, 70, 95)
+            self.interaction_sys.prompt_text = "Mode Kamera: Top-Down (Pengawasan Udara 2D)."
+        elif mode == "isometrik":
+            self.btn_cam.color = color.rgb32(50, 70, 95)
+            self.interaction_sys.prompt_text = "Mode Kamera: Isometrik."
+        elif mode in ("free_cam", "bebas"):
+            self.btn_cam.color = color.rgb32(80, 50, 110)
             self.interaction_sys.prompt_text = (
                 "[FREE-CAM / GOD MODE] Tahan Klik Kanan Mouse untuk rotasi pandangan, "
                 "WASD / Panah / Scroll untuk terbang melintasi seluruh gudang 3D!"
             )
         else:
-            self.interaction_sys.prompt_text = f"Mode Kamera: {cam_label}."
+            self.btn_cam.color = color.rgb32(50, 70, 95)
+            self.interaction_sys.prompt_text = f"Mode Kamera: {mode.capitalize()}."
 
     def adjust_speed(self, delta: float):
         """Menyesuaikan kecepatan armada."""
@@ -386,21 +415,6 @@ class UIController:
         elif self.scene.current_cam_mode == "pov_beta":
             self.scene.update_pov_camera(self.mission_mgr.robot_beta)
 
-    def cycle_pov_camera(self):
-        """Beralih ke mode kamera POV Cockpit / Chase Cam: POV Alpha -> POV Beta -> Isometrik."""
-        if self.scene.current_cam_mode != "pov_alpha" and self.scene.current_cam_mode != "pov_beta":
-            self.scene.apply_camera_mode("pov_alpha")
-            self.btn_cam.text = "[F] POV Alpha"
-            self.interaction_sys.prompt_text = "[POV CAM] Sudut Pandang Kokpit AGV Alpha (A*) Aktif!"
-        elif self.scene.current_cam_mode == "pov_alpha":
-            self.scene.apply_camera_mode("pov_beta")
-            self.btn_cam.text = "[F] POV Beta"
-            self.interaction_sys.prompt_text = "[POV CAM] Sudut Pandang Kokpit AGV Beta (GBFS) Aktif!"
-        else:
-            self.scene.apply_camera_mode("isometrik")
-            self.btn_cam.text = "[K] Isometrik"
-            self.interaction_sys.prompt_text = "Mode Kamera: Isometrik."
-
     def handle_input(self, key: str):
         """Menangani penekanan tombol keyboard & klik mouse raycast."""
         if key == 'left mouse down':
@@ -421,7 +435,9 @@ class UIController:
             self.toggle_pause()
         elif key == 'r':
             self.reset_all()
-        elif key == 'c':
+        elif key in ('c', 'f', 'k', 'v'):
+            self.cycle_camera()
+        elif key in ('x', 'delete', 'backspace'):
             self.scene.clear_all_dynamic_obstacles()
             self.scene.clear_all_terrain_modifiers()
             self.mission_mgr.graph.clear_dynamic_obstacles()
@@ -429,10 +445,6 @@ class UIController:
             if hasattr(self.scene, 'clear_exploration_heatmap'):
                 self.scene.clear_exploration_heatmap()
             self.interaction_sys.prompt_text = "[Info] Seluruh rintangan dinamis, tumpahan oli, boost pad, dan heatmap telah dibersihkan."
-        elif key in ('k', 'v'):
-            self.cycle_camera()
-        elif key == 'f':
-            self.cycle_pov_camera()
         elif key in ('+', '='):
             self.adjust_speed(1.5)
         elif key == '-':
