@@ -45,13 +45,16 @@ from src.config import (
     BETA_TRAIL_OFFSET_X,
     BETA_TRAIL_OFFSET_Y,
     TRAIL_SCALE_SPLIT,
+    BATTERY_DRAIN_PER_GRID,
+    BATTERY_CRITICAL_THRESHOLD,
+    BATTERY_SAFETY_MARGIN,
 )
 from src.environment.asset_loader import AssetLoader
-from src.cognition.pathfinding import a_star_search, greedy_best_first_search
+from src.cognition.heuristics import manhattan_distance
+from src.cognition.pathfinding import a_star_search, greedy_best_first_search, find_nearest_dock
 from src.cognition.warehouse_graph import WarehouseGraph100
 
 Coord = Tuple[int, int]
-
 
 class RobotState(Enum):
     IDLE_DOCK = "Standby di Dock"
@@ -72,7 +75,7 @@ class AGVRobot(Entity):
     """
 
     def __init__(
-        self,
+        self, 
         name: str,
         algorithm_label: str,
         spawn_coord: Coord,
@@ -187,8 +190,14 @@ class AGVRobot(Entity):
 
         # 6. Sistem Manajemen Energi & Baterai AGV
         self.battery: float = 100.0
-        self.battery_drain_rate: float = 0.5  # -0.5% kapasitas per langkah petak grid
+        self.battery_drain_rate: float = BATTERY_DRAIN_PER_GRID  # % kapasitas per langkah petak grid
         self.is_critical_battery: bool = False
+        self.battery_critical_threshold: float = BATTERY_CRITICAL_THRESHOLD
+        self.battery_safety_margin: float = BATTERY_SAFETY_MARGIN
+        self.reach_check_below: float = 60.0   # cek jangkauan dock hanya saat baterai <= 60%
+        self.heuristic_fn = manhattan_distance  # diisi MissionManager (heuristik aktif)
+        self.emergency_dock: Optional[Coord] = None
+        self._resume_state: Optional["RobotState"] = None  # state misi yang dikesampingkan
 
         # Visual Indikator Baterai Melayang (Floating ProgressBar Billboard)
         bar_y = label_y + 0.65
@@ -314,6 +323,9 @@ class AGVRobot(Entity):
         self.total_steps_executed = 0
         self.total_mission_steps = 0
         self.finish_time = None
+        self.is_critical_battery = False
+        self.emergency_dock = None
+        self._resume_state = None
         self.recharge_full()
         self._update_visual_body()
 
@@ -480,7 +492,7 @@ class AGVRobot(Entity):
             self._update_battery_visual()
             if self.pause_timer <= 0:
                 self.recharge_full()
-                self.state = RobotState.IDLE_DOCK
+                self._finish_charging()
             return
 
         # 3. Indikator Kondisi Baterai Kritis (<= 20%)
@@ -551,6 +563,7 @@ class AGVRobot(Entity):
             self.total_steps_executed += 1
             self.consume_battery(self.battery_drain_rate * drain_mult)
             self.spawn_trail_marker(target_pos)
+            self._check_battery_emergency()
         else:
             ratio = step / dist
             self.x += dx * ratio
@@ -690,6 +703,68 @@ class AGVRobot(Entity):
         self.label_tag.text = f"{self.robot_name}\n[KEMBALI KE DOCK]"
         self.label_tag.color = color.rgb32(241, 196, 15)
         return True
+
+    def _check_battery_emergency(self) -> bool:
+        """
+        Dipanggil tiap robot selesai melangkah 1 grid. Memicu rute darurat ke Charging Dock
+        terdekat jika baterai <= batas kritis (20%), ATAU sisa baterai hampir tidak cukup
+        untuk pulang ke dock terdekat (mencegah robot mati di tengah gudang).
+        """
+        if self.is_critical_battery or self.graph is None:
+            return False
+        if self.state not in (RobotState.MOVING_TO_PICKUP, RobotState.MOVING_TO_DROPOFF):
+            return False
+
+        is_low = self.battery <= self.battery_critical_threshold
+        if not is_low and self.battery > self.reach_check_below:
+            return False
+
+        found = find_nearest_dock(
+            self.graph,
+            self.get_current_grid_coord(),
+            self.graph.get_charging_docks(),
+            heuristic=self.heuristic_fn,
+            use_astar=True,  # rute darurat harus terpendek -> selalu A*
+        )
+        if found is None:
+            return False
+        dock, res = found
+
+        # Baterai yang dibutuhkan untuk pulang: (cost + 1 langkah sambungan) x drain + cadangan
+        margin = max(self.battery_safety_margin, 2.0 * self.battery_drain_rate + 1.0)
+        needed = (res.cost + 1.0) * self.battery_drain_rate + margin
+        if not is_low and self.battery > needed:
+            return False
+
+        self._begin_emergency_charge(dock, res.path)
+        return True
+
+    def _begin_emergency_charge(self, dock: Coord, path: List[Coord]):
+        """Menyimpan state misi, lalu mengarahkan robot ke Charging Dock terdekat."""
+        self._resume_state = self.state
+        self.is_critical_battery = True
+        self.emergency_dock = dock
+        self._apply_new_active_path(path, message="! LOW BATTERY -> CHARGING DOCK !")
+        self.state = RobotState.RETURNING_TO_DOCK
+        self.is_paused = False
+        self.label_tag.text = f"{self.robot_name}\n[BATERAI KRITIS -> DOCK]"
+        self.label_tag.color = color.rgb32(231, 76, 60)
+
+    def _finish_charging(self):
+        """Selesai isi daya: lanjutkan misi yang dikesampingkan, atau standby jika pengisian manual."""
+        resume_state = self._resume_state
+        self._resume_state = None
+        self.emergency_dock = None
+        self.is_critical_battery = False
+        self.state = RobotState.IDLE_DOCK
+
+        if resume_state is None or self.graph is None:
+            return
+
+        self.state = resume_state
+        self.is_paused = False
+        if not self.recalculate_route(self.graph, self.heuristic_fn):
+            self.state = RobotState.IDLE_DOCK
 
     # =========================================================================
     # KALKULASI ULANG RUTE DINAMIS (DYNAMIC OBSTACLE REPLANNING)
@@ -831,7 +906,7 @@ class AGVRobot(Entity):
 
         return False
 
-    def _apply_new_active_path(self, new_grid_path: List[Coord]):
+    def _apply_new_active_path(self, new_grid_path: List[Coord], message: str = "REPLANNING ROUTE..."):
         """Menyambungkan posisi aktual robot saat ini ke waypoints rute baru secara halus."""
         self.active_grid_path = list(new_grid_path)
         raw_wps = [grid_to_world(p[0], p[1], 0.0) for p in new_grid_path]
@@ -844,7 +919,7 @@ class AGVRobot(Entity):
             self.waypoint_idx = 0
             self.spawn_trail_marker(self.position)
             self.trigger_radar_pulse()
-            self.spawn_floating_text("REPLANNING ROUTE...", color.rgb32(0, 229, 255))
+            self.spawn_floating_text(message, color.rgb32(0, 229, 255))
 
     def on_destroy(self):
         """Membersihkan entitas visual independen saat robot didestroy."""

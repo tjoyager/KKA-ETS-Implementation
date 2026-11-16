@@ -9,7 +9,7 @@ kalkulasi rencana balapan sinkron, pelacakan waktu, sistem skor, dan penentuan p
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Optional, Set, Tuple
-from ursina import time, camera, color, invoke
+from ursina import time, camera, color, invoke, Entity, Vec3, Text, destroy
 
 from src.config import (
     SPAWN_ALPHA,
@@ -17,6 +17,7 @@ from src.config import (
     DEFAULT_ROBOT_SPEED,
     MIN_ROBOT_SPEED,
     MAX_ROBOT_SPEED,
+    grid_to_world,
 )
 from src.cognition.warehouse_graph import WarehouseGraph100
 from src.cognition.heuristics import AVAILABLE_HEURISTICS
@@ -71,6 +72,7 @@ class MissionManager:
         self.current_heuristic_name = "Manhattan"
         self.current_heuristic_info = AVAILABLE_HEURISTICS["Manhattan"]
         self.current_heuristic_fn = AVAILABLE_HEURISTICS["Manhattan"]["fn"]
+        self._sync_robot_context()
 
         # Multi-Stage & Zone Transfer (Fitur 2)
         self.mission_type = MissionType.STANDARD_DELIVERY
@@ -103,6 +105,29 @@ class MissionManager:
         # Rintangan Bergerak Dinamis (User Forklift)
         self.forklift = None
         self._last_forklift_threats: Set[Coord] = set()
+        self._charger_markers: list = []
+        self._refresh_charging_markers()
+        self._sync_robot_context()
+
+    def _sync_robot_context(self):
+        """Sinkronkan graf & heuristik aktif ke kedua robot (dipakai protokol baterai darurat)."""
+        for robot in (self.robot_alpha, self.robot_beta):
+            robot.graph = self.graph
+            robot.heuristic_fn = self.current_heuristic_fn
+
+    def _refresh_charging_markers(self):
+        """Menggambar penanda stasiun pengisian tambahan (startup & ganti zona)."""
+        for ent in self._charger_markers:
+            destroy(ent)
+        self._charger_markers = []
+        for dock in self.graph.get_charging_docks():
+            if dock in (self.graph.dock_alpha, self.graph.dock_beta):
+                continue  # dock spawn sudah punya model 3D sendiri
+            pos = grid_to_world(dock[0], dock[1], 0.03)
+            pad = Entity(model='cube', position=pos, scale=Vec3(0.9, 0.05, 0.9), color=color.rgb32(46, 204, 113))
+            pole = Entity(model='cube', position=pos + Vec3(0, 0.45, 0), scale=Vec3(0.12, 0.8, 0.12), color=color.rgb32(0, 229, 255))
+            tag = Text(text="CHARGE", position=pos + Vec3(0, 1.3, 0), scale=1.6, color=color.rgb32(0, 229, 255), origin=(0, 0), billboard=True)
+            self._charger_markers.extend([pad, pole, tag])
 
     def set_forklift(self, forklift):
         """Mendaftarkan objek Forklift interaktif untuk deteksi ancaman tabrakan real-time."""
@@ -138,6 +163,7 @@ class MissionManager:
         2. Menghitung rute GBFS untuk Robot Beta.
         3. Menjalankan kedua robot secara serentak.
         """
+        self._sync_robot_context()
         self.selected_pickup_shelf = pickup_shelf
         self.selected_dropoff_shelf = dropoff_shelf
         pickup_shelf.mark_as_pickup(True)
@@ -270,6 +296,7 @@ class MissionManager:
         self.current_heuristic_name = self.heuristic_names[self.heuristic_idx]
         self.current_heuristic_info = AVAILABLE_HEURISTICS[self.current_heuristic_name]
         self.current_heuristic_fn = self.current_heuristic_info["fn"]
+        self._sync_robot_context()
 
         # Jika misi sedang berjalan atau rak sudah dipilih, rencanakan ulang segera!
         if self.selected_pickup_shelf and self.selected_dropoff_shelf:
@@ -411,6 +438,7 @@ class MissionManager:
         lalu langsung meluncurkan balapan!
         """
         self.reset_race()
+        self._sync_robot_context()
 
         cargo_data = self.graph.get_random_cargo_shelf()
         if not cargo_data:
@@ -443,6 +471,7 @@ class MissionManager:
             return False
 
         self.reset_race()
+        self._sync_robot_context()
         self.mission_type = MissionType.INTER_ZONE_TRANSFER
         gate_target = (33, 13)
 
@@ -510,6 +539,8 @@ class MissionManager:
 
         self.graph = new_graph
         self.scene.rebuild_for_new_zone(new_graph)
+        self._sync_robot_context()
+        self._refresh_charging_markers()
 
         # Teleportasi robot kembali ke titik Start dock dan isi daya baterai penuh
         self.robot_alpha.reset_to_dock()
