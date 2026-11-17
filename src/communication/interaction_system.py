@@ -161,6 +161,11 @@ class InteractionSystem:
                     self.prompt_text = f"[Peringatan] Rak {shelf.shelf_data.shelf_id} Kosong! Pilih rak yang memiliki kargo."
                     return
 
+                # Validasi Cegah Double-Booking Antrean Kargo
+                if self.mission_mgr.is_pickup_booked(shelf.shelf_data.x, shelf.shelf_data.y):
+                    self.prompt_text = "[Peringatan] Kargo ini sudah di-booking oleh antrean sebelumnya!"
+                    return
+
                 # Bersihkan seleksi lama jika ada
                 if self.selected_pickup_shelf:
                     self.selected_pickup_shelf.clear_selection()
