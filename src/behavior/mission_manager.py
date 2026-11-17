@@ -8,7 +8,7 @@ kalkulasi rencana balapan sinkron, pelacakan waktu, sistem skor, dan penentuan p
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, List, Optional, Set, Tuple
+from typing import Any, List, Optional, Set, Tuple, Union
 from ursina import time, camera, color, invoke, Entity, Vec3, Text, destroy
 
 from src.config import (
@@ -163,6 +163,45 @@ class MissionManager:
         )
         self.task_queue.append(order)
         return order_id
+
+    @property
+    def pending_orders(self) -> List[DeliveryOrder]:
+        """Daftar antrean pesanan pengantaran tertunda (alias untuk task_queue)."""
+        return self.task_queue
+
+    def is_pickup_booked(self, x: Union[int, Tuple[int, int]], y: Optional[int] = None) -> bool:
+        """
+        Mengecek apakah sebuah koordinat (x, y) sudah ada di dalam daftar pending_orders / task_queue
+        sebagai lokasi pickup (atau sedang ditargetkan untuk diambil oleh misi aktif).
+        Mendukung pemanggilan:
+            is_pickup_booked(x, y)
+            is_pickup_booked((x, y))
+        """
+        if isinstance(x, (tuple, list)):
+            target_x, target_y = int(x[0]), int(x[1])
+        else:
+            target_x, target_y = int(x), int(y)
+
+        # 1. Cek di daftar pending_orders / task_queue
+        for order in self.task_queue:
+            ps = order.pickup_shelf
+            if ps is not None:
+                ps_coord = (ps.shelf_data.x, ps.shelf_data.y) if hasattr(ps, 'shelf_data') else (getattr(ps, 'x', None), getattr(ps, 'y', None))
+                if ps_coord == (target_x, target_y):
+                    return True
+
+        # 2. Cek juga misi aktif saat ini jika kargo di rak belum selesai diambil
+        if self.is_race_active and not self.race_finished and self.selected_pickup_shelf:
+            ps = self.selected_pickup_shelf
+            ps_coord = (ps.shelf_data.x, ps.shelf_data.y) if hasattr(ps, 'shelf_data') else (getattr(ps, 'x', None), getattr(ps, 'y', None))
+            if ps_coord == (target_x, target_y) and hasattr(ps, 'shelf_data') and ps.shelf_data.has_cargo:
+                return True
+
+        return False
+
+    def is_cargo_booked(self, x: Union[int, Tuple[int, int]], y: Optional[int] = None) -> bool:
+        """Alias kompatibilitas untuk is_pickup_booked."""
+        return self.is_pickup_booked(x, y)
 
     def dispatch_race(
         self,
@@ -561,6 +600,9 @@ class MissionManager:
         self.is_transitioning = True
         self.is_race_active = False
 
+        self._alpha_batt_temp = self.robot_alpha.battery
+        self._beta_batt_temp = self.robot_beta.battery
+
         self.robot_alpha.is_paused = True
         self.robot_beta.is_paused = True
 
@@ -572,6 +614,10 @@ class MissionManager:
     def _finish_zone_transition(self):
         """Mengeksekusi regenerasi layout matriks rintangan/rak baru di balik layar hitam dan fade-in."""
         from ursina import camera, color
+
+        # Simpan nilai baterai saat ini sebelum robot di-reset atau di-rebuild untuk zona baru
+        alpha_batt_temp = getattr(self, '_alpha_batt_temp', self.robot_alpha.battery)
+        beta_batt_temp = getattr(self, '_beta_batt_temp', self.robot_beta.battery)
 
         # Beralih antara Zone A dan Zone B
         if self.current_zone == "Zone A":
@@ -606,9 +652,11 @@ class MissionManager:
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
 
-        # 2. Isi penuh baterai mereka
-        self.robot_alpha.recharge_full()
-        self.robot_beta.recharge_full()
+        # 2. Pewarisan sisa baterai dari zona sebelumnya (override baterai dengan nilai temp)
+        self.robot_alpha.battery = alpha_batt_temp
+        self.robot_beta.battery = beta_batt_temp
+        self.robot_alpha._update_battery_visual()
+        self.robot_beta._update_battery_visual()
 
         # Sambungkan callback kedatangan di base dock
         self.robot_alpha.on_finish_callback = self._on_robot_finish

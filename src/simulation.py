@@ -92,7 +92,7 @@ def run_warehouse_simulation():
         print("\n" + "=" * 70)
         print("SIMULATOR GUDANG 3D 35x25 BERHASIL DIMUAT LENGKAP!")
         print("Fitur Peta & Optimasi Performa Aktif:")
-        print("  - [Unified Twin Dock]  : Titik Start Kembar di (17, 1) & (18, 1)")
+        print(f"  - [Unified Twin Dock]  : Titik Start Kembar di {SPAWN_ALPHA} & {SPAWN_BETA}")
         print("  - [3 AI Forklift]      : Moving Obstacles Patroli Otonom Mandiri")
         print("  - [Auto-Return Base]   : Misi 3-Leg (Pickup -> Dropoff -> Dock)")
         print("  - [Weighted Terrain]   : Tumpahan Oli & Speed Boost Pad")

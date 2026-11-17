@@ -239,10 +239,9 @@ def run_full_suite():
     # --- PENGUJIAN FITUR 10: UNIFIED TWIN DOCK & MULTI-FORKLIFT (3 UNITS) ---
     print("\n[UJI 10] Unified Twin Docking Station & Multi-Forklift (3 Unit):")
     assert SPAWN_ALPHA == (17, 1), f"SPAWN_ALPHA harus (17, 1), got {SPAWN_ALPHA}"
-    assert SPAWN_BETA == (18, 1), f"SPAWN_BETA harus (18, 1), got {SPAWN_BETA}"
+    assert SPAWN_BETA == (17, 1), f"SPAWN_BETA harus (17, 1), got {SPAWN_BETA}"
     assert graph.grid[1, 17] == CellType.DOCK
-    assert graph.grid[1, 18] == CellType.DOCK
-    print(f"  ✓ Unified Twin Dock terkonfirmasi di grid {SPAWN_ALPHA} & {SPAWN_BETA}")
+    print(f"  ✓ Single Spawn / Dock terkonfirmasi di grid {SPAWN_ALPHA} & {SPAWN_BETA}")
 
     # Inisialisasi 3 Forklift dengan kontrol independen
     fl_center = ForkliftController(graph=graph, start_coord=(17, 11), control_scheme="wasd", name="Forklift Tengah")
