@@ -40,7 +40,7 @@ def world_to_grid(world_pos) -> Tuple[int, int]:
 # ============================================================================
 # Area Standby & Docking Kembar (Unified Twin Dock) di area bawah/tengah arena (35x25)
 SPAWN_ALPHA: Tuple[int, int] = (17, 1)   # AGV Alpha (A* Search)
-SPAWN_BETA: Tuple[int, int] = (18, 1)    # AGV Beta (Greedy Best-First Search)
+SPAWN_BETA: Tuple[int, int] = (17, 1)    # AGV Beta (Greedy Best-First Search)
 DEFAULT_START: Tuple[int, int] = (17, 1) # Titik tengah docking area
 
 # Titik Target Goal di seberang diagonal (pojok kanan atas arena)

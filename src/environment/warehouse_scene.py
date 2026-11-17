@@ -334,9 +334,10 @@ class WarehouseScene(Entity):
             origin=(0, 0),
             font='assets/fonts/Roboto-Bold.ttf',
         )
+        offset_text = 0.35 if SPAWN_ALPHA == SPAWN_BETA else 0.0
         Text(
             text="ALPHA (A*)",
-            position=pos_a + Vec3(0, 1.55, -0.75),
+            position=pos_a + Vec3(-offset_text, 1.55, -0.75),
             scale=1.1,
             color=color.rgb32(*COLOR_ALPHA_PRIMARY),
             billboard=True,
@@ -345,7 +346,7 @@ class WarehouseScene(Entity):
         )
         Text(
             text="BETA (GBFS)",
-            position=pos_b + Vec3(0, 1.55, -0.75),
+            position=pos_b + Vec3(offset_text, 1.55, -0.75),
             scale=1.1,
             color=color.rgb32(*COLOR_BETA_PRIMARY),
             billboard=True,
