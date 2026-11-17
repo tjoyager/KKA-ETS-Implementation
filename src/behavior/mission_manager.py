@@ -125,11 +125,8 @@ class MissionManager:
         for dock in self.graph.get_charging_docks():
             if dock in (self.graph.dock_alpha, self.graph.dock_beta):
                 continue  # dock spawn sudah punya model 3D sendiri
-            pos = grid_to_world(dock[0], dock[1], 0.03)
-            pad = Entity(model='cube', position=pos, scale=Vec3(0.9, 0.05, 0.9), color=color.rgb32(46, 204, 113))
-            pole = Entity(model='cube', position=pos + Vec3(0, 0.45, 0), scale=Vec3(0.12, 0.8, 0.12), color=color.rgb32(0, 229, 255))
-            tag = Text(text="CHARGE", position=pos + Vec3(0, 1.3, 0), scale=1.6, color=color.rgb32(0, 229, 255), origin=(0, 0), billboard=True)
-            self._charger_markers.extend([pad, pole, tag])
+            from src.environment.interior_charging_station import InteriorChargingStation
+            self._charger_markers.append(InteriorChargingStation(self, dock))
 
     def set_forklift(self, forklift):
         """Mendaftarkan objek Forklift interaktif untuk deteksi ancaman tabrakan real-time."""
