@@ -37,6 +37,8 @@ class UIController:
         self.mission_mgr = mission_manager
         self.interaction_sys = interaction_system
         self.scene = scene
+        from src.communication.warehouse_audio import WarehouseAudio
+        self.warehouse_audio = WarehouseAudio(mission_manager)
         self.scene.mission_mgr = mission_manager
         self.hud_serious = SeriousHUD()
         self.hud_gamification = GamificationHUD()

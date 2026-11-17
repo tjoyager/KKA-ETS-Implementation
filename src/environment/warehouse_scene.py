@@ -574,7 +574,8 @@ class WarehouseScene(Entity):
     def spawn_dynamic_obstacle(self, x: int, y: int) -> Entity:
         target_pos = grid_to_world(x, y, 0.35)
         spawn_pos = Vec3(target_pos.x, 2.6, target_pos.z)
-        cargo_ent = Entity(parent=self, model=AssetLoader.get_cargo_model(), position=spawn_pos, scale=Vec3(0.9, 0.9, 0.9), color=color.rgb32(235, 145, 45), collider='box', shader=lit_with_shadows_shader)
+        from src.environment.cardboard_box import make_cardboard_box
+        cargo_ent = make_cardboard_box(self, spawn_pos)
         cargo_ent.cast_shadows = True
         cargo_ent.receive_shadows = True
         cargo_ent.interactive_type = "dynamic_obstacle"
