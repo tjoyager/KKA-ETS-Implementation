@@ -166,7 +166,7 @@ CAMERA_PRESETS = {
 # ============================================================================
 # SISTEM BATERAI AGV & STASIUN PENGISIAN DAYA (CHARGING DOCK)
 # ============================================================================
-BATTERY_DRAIN_PER_GRID: float = 0.25      # % baterai terkuras per 1 sel grid (game balance: hemat agar bisa return to base)
+BATTERY_DRAIN_PER_GRID: float = 1.0       # % baterai terkuras per 1 sel grid (game balance: 1% per petak grid untuk final ETS demo)
 BATTERY_CRITICAL_THRESHOLD: float = 20.0  # Batas kritis (%) -> paksa menuju Charging Dock
 BATTERY_SAFETY_MARGIN: float = 5.0        # Cadangan (%) untuk cek jangkauan pulang
 
