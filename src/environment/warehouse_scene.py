@@ -280,79 +280,8 @@ class WarehouseScene(Entity):
 
     def _build_dock_and_goal_stations(self):
         """Unified Twin Docking Station di area bawah/tengah arena (x=17, 18, y=1) & Platform Target Goal."""
-        dock_tower_model = AssetLoader.get_dock_model()
-
-        pos_a = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
-        pos_b = grid_to_world(SPAWN_BETA[0], SPAWN_BETA[1], 0.0)
-        mid_pos = (pos_a + pos_b) / 2.0
-
-        # 1. Platform Terpadu Raksasa (Unified Docking Platform)
-        Entity(
-            model='cube',
-            position=mid_pos - Vec3(0, 0.025, 0),
-            scale=Vec3(3.2, 0.06, 1.8),
-            color=color.rgba32(18, 24, 34, 230),
-        )
-
-        # 2. Pad Lantai Parkir Alpha (A* Search) - Cyan Neon
-        Entity(
-            model='cube',
-            position=pos_a - Vec3(0, 0.015, 0),
-            scale=Vec3(1.35, 0.065, 1.5),
-            color=color.rgba32(110, 149, 144, 165),
-        )
-        # Menara charger stasiun Alpha di belakang robot
-        Entity(
-            model=dock_tower_model,
-            position=pos_a + Vec3(0, 0, -0.75),
-            rotation=Vec3(0, 0, 0),
-            scale=Vec3(0.55, 0.65, 0.55),
-        )
-
-        # 3. Pad Lantai Parkir Beta (GBFS) - Orange Neon
-        Entity(
-            model='cube',
-            position=pos_b - Vec3(0, 0.015, 0),
-            scale=Vec3(1.35, 0.065, 1.5),
-            color=color.rgba32(176, 132, 84, 165),
-        )
-        # Menara charger stasiun Beta di belakang robot
-        Entity(
-            model=dock_tower_model,
-            position=pos_b + Vec3(0, 0, -0.75),
-            rotation=Vec3(0, 0, 0),
-            scale=Vec3(0.55, 0.65, 0.55),
-        )
-
-        # 4. Header Billboard Terpadu
-        Text(
-            text="UNIFIED TWIN DOCK\n[ A* SEARCH  |  GBFS ]",
-            position=mid_pos + Vec3(0, 2.1, -0.75),
-            scale=1.45,
-            color=color.rgb32(110, 149, 144),
-            billboard=True,
-            origin=(0, 0),
-            font='assets/fonts/Roboto-Bold.ttf',
-        )
-        offset_text = 0.35 if SPAWN_ALPHA == SPAWN_BETA else 0.0
-        Text(
-            text="ALPHA (A*)",
-            position=pos_a + Vec3(-offset_text, 1.55, -0.75),
-            scale=1.1,
-            color=color.rgb32(*COLOR_ALPHA_PRIMARY),
-            billboard=True,
-            origin=(0, 0),
-            font='assets/fonts/Roboto-Bold.ttf',
-        )
-        Text(
-            text="BETA (GBFS)",
-            position=pos_b + Vec3(offset_text, 1.55, -0.75),
-            scale=1.1,
-            color=color.rgb32(*COLOR_BETA_PRIMARY),
-            billboard=True,
-            origin=(0, 0),
-            font='assets/fonts/Roboto-Bold.ttf',
-        )
+        from src.environment.charging_station import build_charging_station
+        build_charging_station(self)
 
         # Goal
         pos_g = grid_to_world(DEFAULT_GOAL[0], DEFAULT_GOAL[1], 0.0)
