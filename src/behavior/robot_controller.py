@@ -605,6 +605,15 @@ class AGVRobot(Entity):
                 self.on_dropoff_callback(self)
 
         elif self.state == RobotState.RETURNING_TO_DOCK:
+            # Tiba di Charging Dock karena baterai kritis: isi daya dulu, misi dilanjutkan setelahnya
+            if self.emergency_dock is not None:
+                self.state = RobotState.CHARGING
+                self.pause_timer = 2.0
+                self.spawn_floating_text("+CHARGING+", color.rgb32(46, 204, 113))
+                self.label_tag.text = f"{self.robot_name}\n[MENGISI DAYA...]"
+                self.label_tag.color = color.rgb32(46, 204, 113)
+                return
+
             # Tiba di stasiun dock asal (Leg 3 Selesai)!
             self.state = RobotState.FINISHED
             self.finish_time = time.time()
@@ -759,7 +768,11 @@ class AGVRobot(Entity):
         """
         if self.is_critical_battery or self.graph is None:
             return False
-        if self.state not in (RobotState.MOVING_TO_PICKUP, RobotState.MOVING_TO_DROPOFF):
+        if self.state not in (
+            RobotState.MOVING_TO_PICKUP,
+            RobotState.MOVING_TO_DROPOFF,
+            RobotState.RETURNING_TO_DOCK,  # Leg 3 (pulang ke dock asal)
+        ):
             return False
 
         is_low = self.battery <= self.battery_critical_threshold
@@ -780,7 +793,16 @@ class AGVRobot(Entity):
         # Baterai yang dibutuhkan untuk pulang: (cost + 1 langkah sambungan) x drain + cadangan
         margin = max(self.battery_safety_margin, 2.0 * self.battery_drain_rate + 1.0)
         needed = (res.cost + 1.0) * self.battery_drain_rate + margin
-        if not is_low and self.battery > needed:
+
+        if self.state == RobotState.RETURNING_TO_DOCK:
+            # Leg 3: tetap pulang ke dock asal selama baterai masih cukup untuk sampai ke sana.
+            # Mampir ke charging dock lain hanya jika dock asal tidak terjangkau.
+            if dock == self.spawn_coord:
+                return False
+            home = a_star_search(self.graph, self.get_current_grid_coord(), self.spawn_coord, self.heuristic_fn)
+            if home.success and self.battery > (home.cost + 1.0) * self.battery_drain_rate + margin:
+                return False
+        elif not is_low and self.battery > needed:
             return False
 
         self._begin_emergency_charge(dock, res.path)
@@ -1017,7 +1039,8 @@ class AGVRobot(Entity):
         # KASUS 4: SEDANG PULANG MENUJU DOCK / BASE (LEG 3)
         # ---------------------------------------------------------------------
         elif self.state == RobotState.RETURNING_TO_DOCK:
-            res = search_fn(graph, start_node, self.spawn_coord, heuristic=heuristic_fn)
+            home_target = self.emergency_dock if self.emergency_dock is not None else self.spawn_coord
+            res = search_fn(graph, start_node, home_target, heuristic=heuristic_fn)
             if not res.success or not res.path:
                 return False
 
