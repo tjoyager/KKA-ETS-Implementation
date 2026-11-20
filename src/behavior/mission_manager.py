@@ -113,6 +113,7 @@ class MissionManager:
 
     def _sync_robot_context(self):
         """Sinkronkan graf & heuristik aktif ke kedua robot (dipakai protokol baterai darurat)."""
+        self.graph.traffic_manager = self
         for robot in (self.robot_alpha, self.robot_beta):
             robot.graph = self.graph
             robot.heuristic_fn = self.current_heuristic_fn
