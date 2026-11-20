@@ -46,6 +46,7 @@ class UIController:
         self.hud_visible = True
         self.report_open = False
         self.tools_open = True
+        self.legend_open = True
         self._tools_user_toggled = False
         self._last_aspect_ratio = -1.0
         self._speed_toast_until = 0.0
@@ -121,6 +122,9 @@ class UIController:
         self.side_title = self._text("Operations", 0.83, self.TEXT, True)
         self.side_sub = self._text("Selected: Cargo", 0.57, self.MUTED)
         self.btn_tools = self._button("Hide [P]", self.toggle_tools, 0.094)
+        self.btn_legend = self._button("Tutup [L]", self.toggle_legend, 0.12, (39, 79, 78))
+        self.legend_panel = Entity(parent=camera.ui, model="quad", shader=unlit_shader,
+                                  texture="assets/ui/warehouse_legend_id.png", collider="box")
 
         self.run_label = self._text("01  /  DISPATCH", 0.53, self.MUTED, True)
         self.terrain_label = self._text("02  /  ENVIRONMENT", 0.53, self.MUTED, True)
@@ -277,6 +281,9 @@ class UIController:
         # Right sidebar: every button has its own row, and all text stays inside.
         panel_w = 0.34 if aspect >= 1.52 else (0.31 if aspect >= 1.32 else 0.28)
         right = half - 0.016
+        legend_w = min(0.36, (0.68 * 310 / 575), aspect * 0.35)
+        self.legend_panel.scale = Vec3(legend_w, legend_w * 575 / 310, 1)
+        self.legend_panel.position = Vec3(right - legend_w / 2, 0.367 - self.legend_panel.scale_y / 2, 0.016)
         center = right - panel_w / 2
         left = right - panel_w + 0.022
         self.side_bg.position = Vec3(center, 0.040, 0.032)
@@ -459,24 +466,44 @@ class UIController:
         if self.report_open:
             self.speed_toast_bg.enabled = False
             self.speed_toast_text.enabled = False
+        self.btn_legend.enabled = not self.report_open
+        self.legend_panel.enabled = self.legend_open and not self.report_open
+        self.btn_tools.enabled = not self.report_open
         self.btn_report.color = color.rgb32(*((34, 76, 85) if self.report_open else self.SURFACE))
         self.btn_report.text_color = color.rgb32(*(self.CYAN if self.report_open else self.TEXT))
 
     def _apply_tools_visibility(self):
+        show_tools = self.tools_open and not self.legend_open
         for item in self._tool_panel_items:
-            item.enabled = self.tools_open and item is not self.tools_hint and item is not self.tools_footer
+            item.enabled = show_tools and item is not self.tools_hint and item is not self.tools_footer
         # A single short help line sits *inside* the sidebar, under the last button.
-        self.tools_footer.enabled = self.tools_open and self._free_cam_mode(self.scene.current_cam_mode)
+        self.tools_footer.enabled = show_tools and self._free_cam_mode(self.scene.current_cam_mode)
         self.tools_footer.position = Vec3(self.side_title.position.x, -0.278, 0.010)
         self.tools_footer.scale = 0.49
         self._set(self.tools_footer, "WASD move  ·  RMB look  ·  Q/E height")
-        self._set(self.btn_tools, "Hide [P]" if self.tools_open else "Show [P]")
-        self.btn_tools.y = 0.330 if self.tools_open else 0.399
+        self._set(self.btn_tools, "Hide [P]" if show_tools else "Operasi [P]")
+        self.btn_tools.y = 0.330 if show_tools else 0.399
+        self.btn_tools.scale_x = 0.096 if show_tools else 0.118
+        right = max(1.0, float(window.aspect_ratio)) / 2 - 0.016
+        self.btn_tools.x = right - self.btn_tools.scale_x / 2
+        self.btn_legend.position = Vec3(right - (0.060 if show_tools else 0.188), 0.399, 0.008)
+        self.btn_legend.scale = Vec3(0.120, 0.041, 1)
+        self._set(self.btn_legend, "Tutup [L]" if self.legend_open else "Legenda [L]")
+        self._sync_overlay_visibility()
         self.btn_tools.color = color.rgb32(*((34, 76, 85) if self.tools_open else self.SURFACE))
         self.btn_tools.text_color = color.rgb32(*(self.CYAN if self.tools_open else self.TEXT))
 
+    def toggle_legend(self):
+        if not self.report_open:
+            self.legend_open = not self.legend_open
+            self._apply_tools_visibility()
+
     def toggle_tools(self):
-        self.tools_open = not self.tools_open
+        if self.legend_open:
+            self.legend_open = False
+            self.tools_open = True
+        else:
+            self.tools_open = not self.tools_open
         self._tools_user_toggled = True
         self._apply_tools_visibility()
 
@@ -866,6 +893,8 @@ class UIController:
             self.toggle_hud_mode()
         elif key == "u":
             self.toggle_hud_visibility()
+        elif key == "l":
+            self.toggle_legend()
         elif key == "p":
             self.toggle_tools()
         elif key == "j":

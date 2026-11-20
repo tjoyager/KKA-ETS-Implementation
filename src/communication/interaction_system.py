@@ -19,6 +19,7 @@ from ursina import mouse, Text, Vec3, color, Entity, destroy
 
 from src.environment.interactive_shelf import InteractiveShelf
 from src.environment.warehouse_scene import WarehouseScene
+from src.behavior.traffic_clearance import carton_bounds, forklift_bounds, touches_robot
 from src.behavior.mission_manager import MissionManager
 from src.behavior.robot_controller import RobotState
 from src.config import world_to_grid, grid_to_world, GRID_WIDTH, GRID_HEIGHT
@@ -48,7 +49,7 @@ class InteractionSystem:
     def __init__(self, mission_manager: MissionManager, scene: Optional[WarehouseScene] = None):
         self.mission_mgr = mission_manager
         self.scene: WarehouseScene = scene or mission_manager.scene
-        self.graph = mission_manager.graph
+        # The active graph is provided by the mission manager after each zone switch.
         self.state = InteractionState.SELECT_PICKUP
         self.current_tool = PlacementTool.CARGO_BOX
 
@@ -67,6 +68,10 @@ class InteractionSystem:
             position=Vec3(0, -10, 0),
             enabled=False,
         )
+
+    @property
+    def graph(self):
+        return self.mission_mgr.graph
 
     def set_tool(self, tool: PlacementTool):
         """Mengganti kuas/tool penempatan lantai yang aktif."""
@@ -295,7 +300,13 @@ class InteractionSystem:
 
                 # Eksekusi sesuai jenis tool yang dipilih
                 if self.current_tool == PlacementTool.CARGO_BOX:
-                    self.graph.add_dynamic_obstacle(gx, gy)
+                    bounds = carton_bounds(coord)
+                    if (touches_robot(bounds, self.mission_mgr)
+                            or any(bounds.overlaps(forklift_bounds(f)) for f in self.mission_mgr.forklifts if f)):
+                        self.prompt_text = "Belum bisa taruh kardus di sini. Tunggu kendaraan lewat."
+                        return
+                    if not self.graph.add_dynamic_obstacle(gx, gy):
+                        return
                     self.scene.spawn_dynamic_obstacle(gx, gy)
                     alpha_rep, beta_rep = self.mission_mgr.handle_dynamic_obstacle(coord)
 
@@ -311,7 +322,7 @@ class InteractionSystem:
                         )
                     else:
                         if self.mission_mgr.is_race_active:
-                            self.prompt_text = f"[Rintangan Dinamis] Kotak dijatuhkan di ({gx}, {gy}). Jalur robot aman."
+                            self.prompt_text = f"[Rintangan Dinamis] Kotak dijatuhkan di ({gx}, {gy}). Robot akan memeriksa jalur sebelum bergerak."
                         else:
                             self.prompt_text = f"[Rintangan Dinamis] Kotak ditempatkan di ({gx}, {gy}). Matriks graf diperbarui."
 

@@ -24,6 +24,7 @@ from ursina import (
 from ursina.shaders import lit_with_shadows_shader
 
 from src.cognition.warehouse_graph import WarehouseGraph100, CellType
+from src.behavior.traffic_clearance import carton_bounds, forklift_bounds, touches_robot
 from src.config import grid_to_world, world_to_grid, GRID_WIDTH, GRID_HEIGHT
 
 Coord = Tuple[int, int]
@@ -263,7 +264,7 @@ class ForkliftController(Entity):
 
         # 1. Dapatkan daftar tetangga 4-arah yang valid
         neighbors = self.graph.get_neighbors(cx, cy, allow_diagonal=False)
-        candidates = [c for c in neighbors if self.graph.is_walkable(c[0], c[1])]
+        candidates = [c for c in neighbors if self._can_move_to(c)]
 
         # Hindari masuk ke docking station AGV jika ada rute lorong lain yang tersedia
         dock_coords = {
@@ -366,7 +367,15 @@ class ForkliftController(Entity):
         gx, gy = coord
         if not (0 <= gx < self.graph.width and 0 <= gy < self.graph.height):
             return False
-        return self.graph.is_walkable(gx, gy)
+        if not self.graph.is_walkable(gx, gy):
+            return False
+        cx, cy = self.current_coord
+        heading = math.degrees(math.atan2(gx - cx, gy - cy))
+        reserved = forklift_bounds(self, grid_to_world(gx, gy), heading)
+        manager = getattr(self.graph, 'traffic_manager', None)
+        if touches_robot(reserved, manager):
+            return False
+        return not any(reserved.overlaps(carton_bounds(c)) for c in self.graph.dynamic_obstacles)
 
     def get_threatened_coords(self) -> Set[Coord]:
         """
@@ -377,6 +386,8 @@ class ForkliftController(Entity):
         Digunakan oleh AGV Alpha & Beta untuk collision avoidance & dynamic replanning.
         """
         threatened = {self.current_coord}
+        if self.is_moving:
+            threatened.add(self.last_grid_coord)
         if hasattr(self, 'target_coord') and self.target_coord:
             threatened.add(self.target_coord)
         fx = self.current_coord[0] + self.last_move_dir[0]
