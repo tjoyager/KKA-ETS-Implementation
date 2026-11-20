@@ -138,6 +138,8 @@ class AGVRobot(Entity):
         )
         self.visual_body.cast_shadows = True
         self.visual_body.robot_owner = self
+        self.body_offset: float = min(ROBOT_OFFSET_DISTANCE, .10)
+        self.traffic_radius: float = 0.45
         self._measure_traffic_radius()
         self._traffic_retry = 0.0
         self.cast_shadows = True
@@ -194,6 +196,7 @@ class AGVRobot(Entity):
         # 6. Sistem Manajemen Energi & Baterai AGV
         self.battery: float = 100.0
         self.battery_drain_rate: float = BATTERY_DRAIN_PER_GRID  # % kapasitas per langkah petak grid (diadaptasi dari feature/battery-system: 1.5%)
+        self.battery_safety_margin: float = 5.0
         self.is_critical_battery: bool = False
         self.battery_critical_threshold: float = BATTERY_CRITICAL_THRESHOLD
         self._charge_retry = 0.0
@@ -862,26 +865,42 @@ class AGVRobot(Entity):
                                   heuristic=self.heuristic_fn, use_astar=True)
         self._charge_retry = .5
         if found is None:
+            self.emergency_dock = None
+            self.active_waypoints = []
+            self.active_grid_path = []
+            self.waypoint_idx = 0
+            self.label_tag.text = f"{self.robot_name}\n[Menunggu jalur ke charger]"
             return False
         dock, res = found
 
+        is_low = self.battery <= self.battery_critical_threshold
         # Baterai yang dibutuhkan untuk pulang: (cost + 1 langkah sambungan) x drain + cadangan
         margin = max(self.battery_safety_margin, 2.0 * self.battery_drain_rate + 1.0)
         needed = (res.cost + 1.0) * self.battery_drain_rate + margin
 
-        if self.state == RobotState.RETURNING_TO_DOCK:
+        is_returning = (self.state == RobotState.RETURNING_TO_DOCK or self._resume_state == RobotState.RETURNING_TO_DOCK)
+        if is_returning:
             # Leg 3: tetap pulang ke dock asal selama baterai masih cukup untuk sampai ke sana.
             # Mampir ke charging dock lain hanya jika dock asal tidak terjangkau.
             if dock == self.spawn_coord:
+                if self._resume_state is not None:
+                    self.state = self._resume_state
+                    self._resume_state = None
+                    self.is_critical_battery = False
                 return False
             home = a_star_search(self.graph, self.get_current_grid_coord(), self.spawn_coord, self.heuristic_fn)
             if home.success and self.battery > (home.cost + 1.0) * self.battery_drain_rate + margin:
+                if self._resume_state is not None:
+                    self.state = self._resume_state
+                    self._resume_state = None
+                    self.is_critical_battery = False
                 return False
         elif not is_low and self.battery > needed:
+            if self._resume_state is not None:
+                self.state = self._resume_state
+                self._resume_state = None
+                self.is_critical_battery = False
             return False
-
-        self._begin_emergency_charge(dock, res.path)
-        return True
 
         self.emergency_dock, route = found
         self.active_grid_path = list(route.path)
@@ -892,6 +911,21 @@ class AGVRobot(Entity):
         nodes = route.path[1:] or [self.emergency_dock]
         self.active_waypoints = [self.position] + [grid_to_world(*coord) for coord in nodes]
         self.label_tag.text = f"{self.robot_name}\n[Ke charger {self.emergency_dock}]"
+        return True
+
+    def _begin_emergency_charge(self, dock: Coord, path: List[Coord]):
+        """Menyimpan state misi, lalu mengarahkan robot ke Charging Dock terdekat."""
+        if self.state != RobotState.TO_CHARGER:
+            self._resume_state = self.state
+        self.is_critical_battery = True
+        self.emergency_dock = dock
+        self.state = RobotState.TO_CHARGER
+        self.active_grid_path = list(path)
+        self.waypoint_idx = 0
+        nodes = path[1:] or [dock]
+        self.active_waypoints = [self.position] + [grid_to_world(*coord) for coord in nodes]
+        self.label_tag.text = f"{self.robot_name}\n[Ke charger {dock}]"
+
 
     def _start_charging(self):
         if self.get_current_grid_coord() != self.emergency_dock:
