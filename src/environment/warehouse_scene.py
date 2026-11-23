@@ -445,11 +445,8 @@ class WarehouseScene(Entity):
             clamped_z = max(-23.5, min(23.5, desired_pos.z))
             target_cam = Vec3(clamped_x, desired_pos.y, clamped_z)
 
-            camera.position = Vec3(
-                camera.position.x + (target_cam.x - camera.position.x) * 0.15,
-                camera.position.y + (target_cam.y - camera.position.y) * 0.15,
-                camera.position.z + (target_cam.z - camera.position.z) * 0.15,
-            )
+            blend = 1.0 - 0.85 ** (60.0 * max(0.0, utime.dt))
+            camera.position += (target_cam - camera.position) * blend
             camera.look_at(target_pos)
             camera.rotation_z = 0.0
 

@@ -84,8 +84,10 @@ class SeriousHUD:
         self._last_aspect = aspect
         w = 0.435 if aspect >= 1.55 else (0.39 if aspect >= 1.25 else 0.35)
         self.panel_w = w
-        x = -aspect / 2 + 0.018 + w / 2
-        y = 0.016
+        self.container.scale = Vec3(0.62, 0.62, 1)
+        self.container.position = Vec3(-aspect / 2 + 0.018, 0.420, 0)
+        x = w / 2
+        y = -self.panel_h / 2
         left = x - w / 2 + 0.024
         inner = w - 0.048
         col_a = left + inner * 0.67

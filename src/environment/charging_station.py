@@ -1,6 +1,5 @@
 """
 charging_station.py
-===================
 Modul konstruksi Unified Twin Docking Station (SPAWN_ALPHA & SPAWN_BETA)
 dan manajemen entitas stasiun pengisian daya gudang.
 """

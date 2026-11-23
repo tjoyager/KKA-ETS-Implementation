@@ -1,0 +1,9 @@
+{
+  "existing": [
+    "src/behavior/mission_manager.py"
+  ],
+  "files": [
+    "src/environment/interior_charging_station.py",
+    "src/behavior/mission_manager.py"
+  ]
+}

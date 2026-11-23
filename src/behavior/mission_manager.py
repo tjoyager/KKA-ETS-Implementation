@@ -106,7 +106,6 @@ class MissionManager:
         # Rintangan Bergerak Dinamis (User Forklifts)
         self.forklift = None
         self.forklifts: List[Any] = []
-        self._last_forklift_threats: Set[Coord] = set()
         self._charger_markers: list = []
         self._refresh_charging_markers()
         self._sync_robot_context()
@@ -681,9 +680,6 @@ class MissionManager:
 
     def update(self):
         """Update loop per frame untuk pengecekan ancaman forklift, auto-dispatch antrean, dan gamifikasi."""
-        # 1. Pengecekan Ancaman Rintangan Dinamis Forklift (Collision Avoidance & Replanning)
-        self._check_forklift_collision_threats()
-
         # 2. Penugasan Otomatis Antrean Pesanan FIFO (Auto-Dispatch Task Queue)
         if not self.is_transitioning and len(self.task_queue) > 0:
             alpha_ready = self.robot_alpha.state in (RobotState.IDLE_DOCK, RobotState.FINISHED)
@@ -710,54 +706,6 @@ class MissionManager:
 
             if alpha_done and beta_done and not self.race_finished:
                 self._finalize_race_outcome()
-
-    def _check_forklift_collision_threats(self):
-        """
-        Memeriksa apakah salah satu dari unit Forklift memotong rute aktif AGV Alpha atau Beta.
-        Menerapkan edge-triggering dan deteksi perubahan zona ancaman untuk menjaga frame rate 60 FPS
-        (tidak memanggil A* dan GBFS setiap frame, hanya saat sel rute terancam).
-        """
-        fl_list = getattr(self, 'forklifts', None) or ([self.forklift] if self.forklift else [])
-        if not fl_list or not self.is_race_active or self.race_finished:
-            return
-
-        threats: Set[Coord] = set()
-        for fl in fl_list:
-            if hasattr(fl, 'get_threatened_coords'):
-                threats.update(fl.get_threatened_coords())
-
-        if threats == self._last_forklift_threats:
-            return
-
-        self._last_forklift_threats = set(threats)
-
-        pickup_coord = self.selected_pickup_shelf.shelf_data.coord if self.selected_pickup_shelf else None
-        dropoff_coord = self.selected_dropoff_shelf.shelf_data.coord if self.selected_dropoff_shelf else None
-
-        alpha_threatened = any(self.robot_alpha.is_path_blocked_by(tc) for tc in threats)
-        beta_threatened = any(self.robot_beta.is_path_blocked_by(tc) for tc in threats)
-
-        if alpha_threatened:
-            self.robot_alpha.recalculate_route(
-                graph=self.graph,
-                heuristic_fn=self.current_heuristic_fn,
-                pickup_shelf_coord=pickup_coord,
-                dropoff_shelf_coord=dropoff_coord,
-            )
-
-        if beta_threatened:
-            self.robot_beta.recalculate_route(
-                graph=self.graph,
-                heuristic_fn=self.current_heuristic_fn,
-                pickup_shelf_coord=pickup_coord,
-                dropoff_shelf_coord=dropoff_coord,
-            )
-
-        if (alpha_threatened or beta_threatened) and hasattr(self.scene, 'render_exploration_heatmap'):
-            self.scene.render_exploration_heatmap(
-                self.robot_alpha.last_explored_nodes,
-                self.robot_beta.last_explored_nodes,
-            )
 
     def _finalize_race_outcome(self):
         """Menghitung evaluasi komparatif akhir saat balapan selesai."""
