@@ -97,7 +97,7 @@ class WarehouseAudio(Entity):
             previous=self.previous.get(key,pos)
             delta=(pos-previous).length()
             state=getattr(robot.state,'name','')
-            active=state in ('MOVING_TO_PICKUP','MOVING_TO_DROPOFF','RETURNING_TO_DOCK')
+            active=state in ('MOVING_TO_PICKUP','MOVING_TO_DROPOFF','RETURNING_TO_DOCK','TO_CHARGER')
             moving |= active and .00001<delta<max(2,dt*35) and not robot.is_paused
             if key in self.states and self.states[key]!=state:
                 if state=='LOADING_CARGO':event='pickup'

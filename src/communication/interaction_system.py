@@ -22,7 +22,7 @@ from src.environment.warehouse_scene import WarehouseScene
 from src.behavior.traffic_clearance import carton_bounds, forklift_bounds, touches_robot
 from src.behavior.mission_manager import MissionManager
 from src.behavior.robot_controller import RobotState
-from src.config import world_to_grid, grid_to_world, GRID_WIDTH, GRID_HEIGHT
+from src.config import world_to_grid, grid_to_world, GRID_WIDTH, GRID_HEIGHT, CHARGING_STATIONS
 
 Coord = Tuple[int, int]
 
@@ -56,6 +56,8 @@ class InteractionSystem:
         self.hovered_shelf: Optional[InteractiveShelf] = None
         self.selected_pickup_shelf: Optional[InteractiveShelf] = None
         self.selected_dropoff_shelf: Optional[InteractiveShelf] = None
+        self._queue_pickup_shelf: Optional[InteractiveShelf] = None
+        self._observed_race_finished: bool = False
 
         # Banner Instruksi Dinamis Mengambang di Atas Layar
         self.prompt_text = "KLIK 1: Klik RAK DENGAN KARGO untuk titik jemput, atau gunakan Tool [1/2/3] di lantai"
@@ -136,12 +138,30 @@ class InteractionSystem:
             self.cursor_marker.enabled = False
 
         # Deteksi transisi otomatis saat balapan selesai
-        if self.state == InteractionState.RACING and self.mission_mgr.race_finished:
+        if self.mission_mgr.is_race_active and not self.mission_mgr.race_finished:
+            self._observed_race_finished = False
+        elif self.mission_mgr.race_finished and not self._observed_race_finished:
+            self._observed_race_finished = True
             if len(self.mission_mgr.task_queue) > 0:
                 self.prompt_text = f"PENGANTARAN SELESAI! Mempersiapkan pesanan dari antrean ({len(self.mission_mgr.task_queue)} pesanan tersisa)..."
-            else:
+            elif self.state == InteractionState.RACING:
                 self.state = InteractionState.COMPLETED
                 self.prompt_text = "PENGANTARAN SELESAI! Klik rak kargo baru untuk misi berikutnya, atau tekan [G] Misi Acak."
+            elif self.state == InteractionState.SELECT_DROPOFF and self._queue_pickup_shelf is not None:
+                self.prompt_text = (
+                    f"Balapan sebelumnya selesai! Pilih RAK KOSONG untuk langsung menjalankan "
+                    f"{self._queue_pickup_shelf.shelf_data.shelf_id}."
+                )
+
+    def _is_race_busy(self) -> bool:
+        return bool(
+            self.mission_mgr.is_race_active
+            and not self.mission_mgr.race_finished
+            and (
+                self.mission_mgr.robot_alpha.state not in (RobotState.IDLE_DOCK, RobotState.FINISHED)
+                or self.mission_mgr.robot_beta.state not in (RobotState.IDLE_DOCK, RobotState.FINISHED)
+            )
+        )
 
     def handle_click(self):
         """
@@ -171,17 +191,25 @@ class InteractionSystem:
                     self.prompt_text = "[Peringatan] Kargo ini sudah di-booking oleh antrean sebelumnya!"
                     return
 
-                # Bersihkan seleksi lama jika ada
-                if self.selected_pickup_shelf:
-                    self.selected_pickup_shelf.clear_selection()
-                if self.selected_dropoff_shelf:
-                    self.selected_dropoff_shelf.clear_selection()
+                is_busy = self._is_race_busy()
+                if is_busy:
+                    if self._queue_pickup_shelf and self._queue_pickup_shelf is not shelf:
+                        self._queue_pickup_shelf.clear_selection()
+                    self._queue_pickup_shelf = shelf
+                else:
+                    # Bersihkan seleksi lama jika ada
+                    if self.selected_pickup_shelf:
+                        self.selected_pickup_shelf.clear_selection()
+                    if self.selected_dropoff_shelf:
+                        self.selected_dropoff_shelf.clear_selection()
+                    self._queue_pickup_shelf = None
+                    self.selected_dropoff_shelf = None
 
                 self.selected_pickup_shelf = shelf
                 shelf.mark_as_pickup(True)
                 self.state = InteractionState.SELECT_DROPOFF
 
-                if self.mission_mgr.is_race_active and not self.mission_mgr.race_finished:
+                if is_busy:
                     self.prompt_text = (
                         f"[ANTREAN PESANAN] Titik Jemput: {shelf.shelf_data.shelf_id}. "
                         f"Sekarang klik RAK KOSONG untuk menambahkan tiket ke antrean!"
@@ -199,23 +227,20 @@ class InteractionSystem:
                     self.prompt_text = "[Peringatan] Titik antar tidak boleh sama dengan titik jemput!"
                     return
 
-                self.selected_dropoff_shelf = shelf
+                if shelf.shelf_data.has_cargo:
+                    self.prompt_text = f"[Peringatan] Rak {shelf.shelf_data.shelf_id} sudah terisi kargo! Pilih rak kosong."
+                    return
+
+                if self.mission_mgr.is_dropoff_booked(shelf.shelf_data.x, shelf.shelf_data.y):
+                    self.prompt_text = f"[Peringatan] Rak {shelf.shelf_data.shelf_id} sudah di-booking sebagai tujuan antrean!"
+                    return
 
                 # Cek apakah robot sedang sibuk menjalankan misi
-                is_busy = (
-                    self.mission_mgr.is_race_active
-                    and not self.mission_mgr.race_finished
-                    and (
-                        self.mission_mgr.robot_alpha.state not in (RobotState.IDLE_DOCK, RobotState.FINISHED)
-                        or self.mission_mgr.robot_beta.state not in (RobotState.IDLE_DOCK, RobotState.FINISHED)
-                    )
-                )
-
-                if is_busy:
+                if self._is_race_busy():
                     # Masukkan pesanan ke antrean FIFO tanpa mengganggu balapan berjalan
                     order_id = self.mission_mgr.enqueue_order(
                         self.selected_pickup_shelf,
-                        self.selected_dropoff_shelf,
+                        shelf,
                     )
                     q_len = len(self.mission_mgr.task_queue)
                     p_id = self.selected_pickup_shelf.shelf_data.shelf_id
@@ -224,14 +249,25 @@ class InteractionSystem:
                         f"[ANTREAN TERSIMPAN] Pesanan #{order_id} ({p_id} -> {d_id}) "
                         f"ditambahkan ke antrean! (Total Antrean: {q_len}). Dikerjakan otomatis saat idle."
                     )
-                    # Bersihkan seleksi visual sementara dan persiapkan seleksi berikutnya
+                    # Bersihkan seleksi sementara antrean dan pulihkan penanda misi aktif
                     self.selected_pickup_shelf.clear_selection()
-                    self.selected_pickup_shelf = None
-                    self.selected_dropoff_shelf = None
-                    self.state = InteractionState.SELECT_PICKUP
+                    self._queue_pickup_shelf = None
+                    self.selected_pickup_shelf = self.mission_mgr.selected_pickup_shelf
+                    self.selected_dropoff_shelf = self.mission_mgr.selected_dropoff_shelf
+                    if self.selected_pickup_shelf:
+                        self.selected_pickup_shelf.mark_as_pickup(True)
+                    if self.selected_dropoff_shelf:
+                        self.selected_dropoff_shelf.mark_as_dropoff(True)
+                    self.state = InteractionState.RACING
                     return
                 else:
                     # Jalankan balapan segera jika robot sedang menganggur
+                    if self.mission_mgr.selected_pickup_shelf and self.mission_mgr.selected_pickup_shelf is not self.selected_pickup_shelf:
+                        self.mission_mgr.selected_pickup_shelf.clear_selection()
+                    if self.mission_mgr.selected_dropoff_shelf and self.mission_mgr.selected_dropoff_shelf is not shelf:
+                        self.mission_mgr.selected_dropoff_shelf.clear_selection()
+                    self._queue_pickup_shelf = None
+                    self.selected_dropoff_shelf = shelf
                     shelf.mark_as_dropoff(True)
                     self.state = InteractionState.RACING
 
@@ -293,9 +329,15 @@ class InteractionSystem:
                     self.prompt_text = f"[Peringatan] Tidak dapat menempatkan tool di sel robot ({gx}, {gy})!"
                     return
 
-                # Cegah menjatuhkan rintangan di docking stasiun
-                if coord in (self.graph.dock_alpha, self.graph.dock_beta):
-                    self.prompt_text = f"[Peringatan] Tidak dapat menempatkan tool di stasiun pengisian dock ({gx}, {gy})!"
+                # Cegah menjatuhkan rintangan di docking stasiun, charger interior, goal, dan transfer gate
+                protected_cells = (
+                    set(self.graph.get_charging_docks())
+                    | set(CHARGING_STATIONS)
+                    | {self.graph.dock_alpha, self.graph.dock_beta, self.graph.goal}
+                    | set(self.graph.transfer_gate_coords)
+                )
+                if coord in protected_cells:
+                    self.prompt_text = f"[Peringatan] Tidak dapat menempatkan tool di sel fasilitas/stasiun ({gx}, {gy})!"
                     return
 
                 # Eksekusi sesuai jenis tool yang dipilih
@@ -392,6 +434,10 @@ class InteractionSystem:
     def reset_interaction(self):
         """Mereset state seleksi klik kembali ke awal."""
         self.state = InteractionState.SELECT_PICKUP
+        self._observed_race_finished = False
+        if self._queue_pickup_shelf:
+            self._queue_pickup_shelf.clear_selection()
+            self._queue_pickup_shelf = None
         if self.selected_pickup_shelf:
             self.selected_pickup_shelf.clear_selection()
             self.selected_pickup_shelf = None

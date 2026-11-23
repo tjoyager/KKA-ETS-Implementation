@@ -149,9 +149,9 @@ class SeriousHUD:
                 (str(pa.total_nodes_explored), str(pb.total_nodes_explored)),
                 (f"{pa.total_compute_time_ms:.1f} ms", f"{pb.total_compute_time_ms:.1f} ms"),
                 (("Done" if mission_mgr.race_finished else
-                  f"{min(a.waypoint_idx, a.total_mission_steps)}/{a.total_mission_steps}"),
+                  f"{min(a.total_steps_executed, a.total_mission_steps)}/{a.total_mission_steps}"),
                  ("Done" if mission_mgr.race_finished else
-                  f"{min(b.waypoint_idx, b.total_mission_steps)}/{b.total_mission_steps}")),
+                  f"{min(b.total_steps_executed, b.total_mission_steps)}/{b.total_mission_steps}")),
             )
             n = len(plan.shared_bottleneck_nodes)
             congestion = plan.congestion_index * 100.0

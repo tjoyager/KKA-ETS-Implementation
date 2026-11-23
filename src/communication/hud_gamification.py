@@ -163,7 +163,12 @@ class GamificationHUD:
         for (_, _, _, line1, line2), robot, cost in zip(self.cards, robots, costs):
             c = f"{cost:.1f}" if cost is not None else "--"
             self._set(line1, self._clip(f"Battery {robot.battery:.0f}%   ·   Cost {c}", 28))
-            self._set(line2, self._clip(f"Steps {robot.waypoint_idx}/{robot.total_mission_steps}", 28))
+            steps_txt = (
+                f"Steps {min(robot.total_steps_executed, robot.total_mission_steps)}/{robot.total_mission_steps}"
+                if robot.total_mission_steps > 0
+                else "Steps --"
+            )
+            self._set(line2, self._clip(steps_txt, 28))
 
         first = mission_mgr.first_to_arrive
         if first:
