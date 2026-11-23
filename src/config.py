@@ -135,13 +135,13 @@ MODEL_PATH_CARGO = "assets/models/cargo.obj"
 CAMERA_PRESETS = {
     "isometrik": {
         "pos": (-85.0, 65.0, -65.0),   # Kamera ditarik lebih dekat (Y dan Z dikecilkan)
-        "target": (-3.0, 0.0, 0.0),     # Center arena between telemetry and operations panels
+        "target": (-2.0, 0.0, -0.5),    # Center arena symmetrically between UI boundaries
         "fov": 40,                     # FOV diperkecil untuk efek Zoom In
     },
     "topdown": {
-        "pos": (-2.0, 80.0, 0.0),
+        "pos": (-2.0, 84.0, 1.5),
         "target": (-10.0, 5.0, -5.0),
-        "fov": 50,
+        "fov": 52,
     },
     "follow_alpha": {
         "offset": (0.0, 12.0, -10.0), # Zoom in untuk kamera follow

@@ -13,6 +13,7 @@ from ursina import Button, Entity, Text, Vec3, application, camera, color, held_
 from src.behavior.mission_manager import MissionManager
 from src.communication.hud_gamification import GamificationHUD
 from src.communication.hud_serious import SeriousHUD
+from src.communication.warehouse_legend import WarehouseLegend
 from src.communication.interaction_system import InteractionState, InteractionSystem, PlacementTool
 from src.environment.warehouse_scene import WarehouseScene
 from src.environment.industrial_facelift import IndustrialFacelift
@@ -123,8 +124,8 @@ class UIController:
         self.side_sub = self._text("Selected: Cargo", 0.57, self.MUTED)
         self.btn_tools = self._button("Hide [P]", self.toggle_tools, 0.094)
         self.btn_legend = self._button("Tutup [L]", self.toggle_legend, 0.12, (39, 79, 78))
-        self.legend_panel = Entity(parent=camera.ui, model="quad", shader=unlit_shader,
-                                  texture="assets/ui/warehouse_legend_id.png", collider="box")
+        self.legend = WarehouseLegend()
+        self.legend_panel = self.legend.container
 
         self.run_label = self._text("01  /  DISPATCH", 0.53, self.MUTED, True)
         self.terrain_label = self._text("02  /  ENVIRONMENT", 0.53, self.MUTED, True)
@@ -281,9 +282,8 @@ class UIController:
         # Right sidebar: every button has its own row, and all text stays inside.
         panel_w = 0.34 if aspect >= 1.52 else (0.31 if aspect >= 1.32 else 0.28)
         right = half - 0.016
-        legend_w = min(0.32, aspect * 0.28)
-        self.legend_panel.scale = Vec3(legend_w, 0.370, 1)
-        self.legend_panel.position = Vec3(-half + 0.018 + legend_w / 2, -0.398 + self.legend_panel.scale_y / 2, 0.016)
+        tel_w = self.hud_serious.panel_w
+        self.legend.update_layout(top_y=0.043, panel_w=tel_w)
         center = right - panel_w / 2
         left = right - panel_w + 0.022
         self.side_bg.position = Vec3(center, 0.040, 0.032)
@@ -469,7 +469,8 @@ class UIController:
             self.speed_toast_bg.enabled = False
             self.speed_toast_text.enabled = False
         self.btn_legend.enabled = not self.report_open
-        self.legend_panel.enabled = self.legend_open and not self.report_open
+        self.legend.set_visible(self.legend_open and not self.report_open)
+        self.legend_panel.enabled = self.legend.container.enabled
         self.btn_tools.enabled = not self.report_open
         self.btn_report.color = color.rgb32(*((34, 76, 85) if self.report_open else self.SURFACE))
         self.btn_report.text_color = color.rgb32(*(self.CYAN if self.report_open else self.TEXT))
