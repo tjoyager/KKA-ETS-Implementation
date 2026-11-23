@@ -202,6 +202,7 @@ class AGVRobot(Entity):
         self._charge_retry = 0.0
         self.heuristic_fn = manhattan_distance  # diisi MissionManager (heuristik aktif)
         self.emergency_dock: Optional[Coord] = None
+        self._emergency_cooldown: float = 0.0
         self._resume_state: Optional["RobotState"] = None  # state misi yang dikesampingkan
 
         # Visual Indikator Baterai Melayang (Floating ProgressBar Billboard)
@@ -352,6 +353,7 @@ class AGVRobot(Entity):
         self.emergency_dock = None
         self._resume_state = None
         self._charge_retry = 0.0
+        self._emergency_cooldown = 0.0
         self.recharge_full()
         self._update_visual_body()
 
@@ -687,9 +689,11 @@ class AGVRobot(Entity):
             self.state = RobotState.FINISHED
             self.finish_time = time.time()
             self.spawn_floating_text("+BASE REACHED+", color.rgb32(46, 204, 113))
-            self.label_tag.text = f"{self.robot_name}\n[STANDBY DI DOCK]"
+            self.visual_body.color = self.primary_col
+            self.top_beacon.color = self.primary_col
+            self._update_battery_visual()
+            self.label_tag.text = f"{self.robot_name}\n[STANDBY DI DOCK]\nSisa baterai: {self.battery:.0f}%"
             self.label_tag.color = self.primary_col
-            self.recharge_full()
             if self.on_finish_callback:
                 self.on_finish_callback(self)
 
@@ -794,7 +798,7 @@ class AGVRobot(Entity):
         Perintah intervensi user (Klik Kanan): Memaksa robot kembali ke stasiun docking
         untuk mengisi daya baterai hingga 100%.
         """
-        if self.state in (RobotState.IDLE_DOCK, RobotState.CHARGING):
+        if self.state in (RobotState.IDLE_DOCK, RobotState.CHARGING, RobotState.FINISHED):
             self.recharge_full()
             return True
 
@@ -850,6 +854,9 @@ class AGVRobot(Entity):
         self.state = RobotState.TO_CHARGER
         self.is_critical_battery = True
         self._plan_charge_trip()
+        if self.state != RobotState.TO_CHARGER:
+            self._emergency_cooldown = 0.5
+            return False
         return True
 
     def _plan_charge_trip(self):
