@@ -81,20 +81,8 @@ class ForkliftController(Entity):
         self.chassis_rgb = col
         self.display_name = fl_name
 
-        # Cari koordinat awal lorong kosong yang valid jika tidak ditentukan
-        if start_coord is None:
-            cand = (17, 11)
-            if not self.graph.is_walkable(cand[0], cand[1]):
-                found = False
-                for cx in range(10, 25):
-                    for cy in range(5, 20):
-                        if self.graph.is_walkable(cx, cy):
-                            cand = (cx, cy)
-                            found = True
-                            break
-                    if found:
-                        break
-            start_coord = cand
+        # Cari koordinat awal lorong kosong yang valid jika tidak ditentukan / terhalang
+        start_coord = self._resolve_walkable_coord(self.graph, start_coord or (17, 11))
 
         self.start_coord: Coord = start_coord
         self.current_coord: Coord = start_coord
@@ -102,6 +90,7 @@ class ForkliftController(Entity):
         self.target_coord: Optional[Coord] = start_coord
         self.last_grid_coord: Optional[Coord] = None
         self.last_move_dir: Tuple[int, int] = (0, 1)  # Menghadap utara secara default
+        self.is_paused: bool = False
 
         spawn_pos = grid_to_world(start_coord[0], start_coord[1], 0.0)
         self.start_pos: Vec3 = Vec3(spawn_pos.x, spawn_pos.y, spawn_pos.z)
@@ -349,8 +338,8 @@ class ForkliftController(Entity):
         if hasattr(self, 'beacon') and self.beacon:
             self.beacon.color = color.yellow if blink else color.orange
 
-        # Jika kontrol dinonaktifkan (misal mode Free-Cam aktif), hentikan pergerakan
-        if not getattr(self, 'enabled_control', True):
+        # Jika kontrol dinonaktifkan (Free-Cam) atau simulasi dijeda, hentikan pergerakan
+        if not getattr(self, 'enabled_control', True) or getattr(self, 'is_paused', False):
             return
 
         dt = getattr(time, 'dt', 0.0)
@@ -415,10 +404,37 @@ class ForkliftController(Entity):
             threatened.add((fx, fy))
         return threatened
 
+    @staticmethod
+    def _resolve_walkable_coord(graph: WarehouseGraph100, preferred: Coord) -> Coord:
+        """Memastikan koordinat forklift selalu berada pada sel walkable (bukan rak/dinding)."""
+        if graph.is_walkable(preferred[0], preferred[1]):
+            return preferred
+        dock_coords = {
+            getattr(graph, 'dock_alpha', None),
+            getattr(graph, 'dock_beta', None),
+        }
+        fallback: Optional[Coord] = None
+        max_r = max(graph.width, graph.height)
+        for radius in range(1, max_r):
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    if max(abs(dx), abs(dy)) != radius:
+                        continue
+                    cx, cy = preferred[0] + dx, preferred[1] + dy
+                    if not graph.is_walkable(cx, cy):
+                        continue
+                    if (cx, cy) not in dock_coords:
+                        return (cx, cy)
+                    if fallback is None:
+                        fallback = (cx, cy)
+        return fallback if fallback is not None else preferred
+
     def reset_position(self, coord: Optional[Coord] = None):
-        """Mereset posisi Forklift ke koordinat aman."""
+        """Mereset posisi Forklift ke koordinat aman yang walkable."""
         old = self.current_coord
-        target = coord or getattr(self, 'start_coord', (17, 11))
+        preferred = coord or getattr(self, 'start_coord', (17, 11))
+        target = self._resolve_walkable_coord(self.graph, preferred)
+        self.start_coord = target
         spawn_pos = grid_to_world(target[0], target[1], 0.0)
 
         self.position = spawn_pos

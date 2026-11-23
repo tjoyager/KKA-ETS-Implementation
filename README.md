@@ -268,7 +268,7 @@ KKA-ETS-Implementation/
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-   *Isi `requirements.txt` meliputi `ursina>=6.0.0`, `numpy>=1.24.0`, dan `Pillow>=10.0.0`.*
+   *Isi `requirements.txt` meliputi `numpy>=1.24.0`, `ursina>=6.0.0`, `Pillow>=10.1.0`, dan `panda3d>=1.10.13` (untuk menjalankan suite pengujian otomatis, pasang juga `requirements-dev.txt`).*
 
 4. **Jalankan simulator 3D**:
    ```bash

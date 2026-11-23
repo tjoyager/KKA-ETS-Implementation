@@ -130,6 +130,22 @@ class WarehouseGraph100:
         if self.is_in_bounds(x, y):
             self.grid[y, x] = int(cell_type)
 
+    def _restore_base_cell_type(self, coord: Coord) -> CellType:
+        """Mengembalikan tipe sel dasar (dock, gate, goal, terrain modifier, atau empty)."""
+        if coord == self.dock_alpha or coord == self.dock_beta:
+            return CellType.DOCK
+        if coord in self.transfer_gate_coords:
+            return CellType.TRANSFER_GATE
+        if coord == self.goal:
+            return CellType.GOAL
+        weight = self.terrain_weights.get(coord)
+        if weight is not None:
+            if weight > 2.0:
+                return CellType.HAZARD_OIL
+            if weight < 0.8:
+                return CellType.BOOST_PAD
+        return CellType.EMPTY
+
     def update_forklift_cell(self, old_coord: Optional[Coord], new_coord: Optional[Coord], forklift_id: Optional[Any] = None) -> None:
         """
         Memperbarui posisi sel rintangan Forklift secara real-time.
@@ -149,25 +165,10 @@ class WarehouseGraph100:
                 if self._forklift_cell_counts[old_coord] <= 0:
                     del self._forklift_cell_counts[old_coord]
                     if self.grid[oy, ox] == CellType.FORKLIFT:
-                        # Kembalikan ke tipe sel aslinya jika sudah tidak ada forklift lain
-                        if old_coord == self.dock_alpha or old_coord == self.dock_beta:
-                            self.grid[oy, ox] = CellType.DOCK
-                        elif old_coord in self.transfer_gate_coords:
-                            self.grid[oy, ox] = CellType.TRANSFER_GATE
-                        elif old_coord == self.goal:
-                            self.grid[oy, ox] = CellType.GOAL
-                        else:
-                            self.grid[oy, ox] = CellType.EMPTY
+                        self.grid[oy, ox] = self._restore_base_cell_type(old_coord)
             else:
                 if self.grid[oy, ox] == CellType.FORKLIFT:
-                    if old_coord == self.dock_alpha or old_coord == self.dock_beta:
-                        self.grid[oy, ox] = CellType.DOCK
-                    elif old_coord in self.transfer_gate_coords:
-                        self.grid[oy, ox] = CellType.TRANSFER_GATE
-                    elif old_coord == self.goal:
-                        self.grid[oy, ox] = CellType.GOAL
-                    else:
-                        self.grid[oy, ox] = CellType.EMPTY
+                    self.grid[oy, ox] = self._restore_base_cell_type(old_coord)
 
             affected.add(old_coord)
             for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
@@ -179,7 +180,14 @@ class WarehouseGraph100:
             nx, ny = new_coord
             self._forklift_cell_counts[new_coord] = self._forklift_cell_counts.get(new_coord, 0) + 1
             # Jangan timpa rintangan permanen rak atau dinding
-            if self.grid[ny, nx] in (CellType.EMPTY, CellType.DOCK, CellType.GOAL, CellType.TRANSFER_GATE):
+            if self.grid[ny, nx] in (
+                CellType.EMPTY,
+                CellType.DOCK,
+                CellType.GOAL,
+                CellType.TRANSFER_GATE,
+                CellType.HAZARD_OIL,
+                CellType.BOOST_PAD,
+            ):
                 self.grid[ny, nx] = CellType.FORKLIFT
             affected.add(new_coord)
             for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)):
@@ -234,11 +242,11 @@ class WarehouseGraph100:
     def remove_dynamic_obstacle(self, x: int, y: int) -> bool:
         """
         Menghapus rintangan dinamis yang sebelumnya ditempatkan pengguna.
-        Mengembalikan sel ke status EMPTY dan memperbarui keterhubungan graf.
+        Mengembalikan sel ke tipe dasarnya dan memperbarui keterhubungan graf.
         """
         if (x, y) not in self.dynamic_obstacles:
             return False
-        self.set_cell(x, y, CellType.EMPTY)
+        self.set_cell(x, y, self._restore_base_cell_type((x, y)))
         self.dynamic_obstacles.remove((x, y))
         self.precompute_adjacency()
         return True
@@ -246,7 +254,7 @@ class WarehouseGraph100:
     def clear_dynamic_obstacles(self) -> None:
         """Menghapus seluruh rintangan dinamis dan merestorasi graf ke kondisi awal."""
         for (x, y) in list(self.dynamic_obstacles):
-            self.set_cell(x, y, CellType.EMPTY)
+            self.set_cell(x, y, self._restore_base_cell_type((x, y)))
         self.dynamic_obstacles.clear()
         self.precompute_adjacency()
 
@@ -352,7 +360,7 @@ class WarehouseGraph100:
         if coord in self.terrain_weights:
             del self.terrain_weights[coord]
             if self.is_in_bounds(x, y) and self.grid[y, x] in (CellType.HAZARD_OIL, CellType.BOOST_PAD):
-                self.set_cell(x, y, CellType.EMPTY)
+                self.set_cell(x, y, self._restore_base_cell_type(coord))
             return True
         return False
 

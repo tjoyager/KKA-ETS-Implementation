@@ -21,7 +21,12 @@ from src.config import (
 )
 from src.cognition.warehouse_graph import WarehouseGraph100
 from src.cognition.heuristics import AVAILABLE_HEURISTICS
-from src.cognition.pathfinding import DualPathPlanner, DualRacePlan
+from src.cognition.pathfinding import (
+    DualPathPlanner,
+    DualRacePlan,
+    a_star_search,
+    greedy_best_first_search,
+)
 from src.behavior.robot_controller import AGVRobot, RobotState
 from src.environment.interactive_shelf import InteractiveShelf
 from src.environment.warehouse_scene import WarehouseScene
@@ -136,11 +141,17 @@ class MissionManager:
         else:
             self.forklift = forklift
             self.forklifts = [forklift] if forklift else []
+        for fl in self.forklifts:
+            if hasattr(fl, 'is_paused'):
+                fl.is_paused = self.is_paused
 
     def set_forklifts(self, forklifts: List[Any]):
         """Mendaftarkan daftar beberapa unit Forklift."""
         self.forklifts = list(forklifts)
         self.forklift = forklifts[0] if forklifts else None
+        for fl in self.forklifts:
+            if hasattr(fl, 'is_paused'):
+                fl.is_paused = self.is_paused
 
     def enqueue_order(
         self,
@@ -166,6 +177,39 @@ class MissionManager:
         """Daftar antrean pesanan pengantaran tertunda (alias untuk task_queue)."""
         return self.task_queue
 
+    @staticmethod
+    def _extract_shelf_coord(shelf: Any) -> Tuple[Optional[int], Optional[int]]:
+        if shelf is None:
+            return (None, None)
+        if hasattr(shelf, 'shelf_data'):
+            return (shelf.shelf_data.x, shelf.shelf_data.y)
+        return (getattr(shelf, 'x', None), getattr(shelf, 'y', None))
+
+    def _is_shelf_booked(
+        self,
+        x: Union[int, Tuple[int, int]],
+        y: Optional[int],
+        order_attr: str,
+        active_shelf: Optional[InteractiveShelf],
+        require_cargo: bool = False,
+    ) -> bool:
+        if isinstance(x, (tuple, list)):
+            target = (int(x[0]), int(x[1]))
+        else:
+            target = (int(x), int(y))
+
+        for order in self.task_queue:
+            shelf = getattr(order, order_attr, None)
+            if self._extract_shelf_coord(shelf) == target:
+                return True
+
+        if self.is_race_active and not self.race_finished and active_shelf is not None:
+            if self._extract_shelf_coord(active_shelf) == target:
+                if not require_cargo or (hasattr(active_shelf, 'shelf_data') and active_shelf.shelf_data.has_cargo):
+                    return True
+
+        return False
+
     def is_pickup_booked(self, x: Union[int, Tuple[int, int]], y: Optional[int] = None) -> bool:
         """
         Mengecek apakah sebuah koordinat (x, y) sudah ada di dalam daftar pending_orders / task_queue
@@ -174,27 +218,14 @@ class MissionManager:
             is_pickup_booked(x, y)
             is_pickup_booked((x, y))
         """
-        if isinstance(x, (tuple, list)):
-            target_x, target_y = int(x[0]), int(x[1])
-        else:
-            target_x, target_y = int(x), int(y)
+        return self._is_shelf_booked(x, y, "pickup_shelf", self.selected_pickup_shelf, require_cargo=True)
 
-        # 1. Cek di daftar pending_orders / task_queue
-        for order in self.task_queue:
-            ps = order.pickup_shelf
-            if ps is not None:
-                ps_coord = (ps.shelf_data.x, ps.shelf_data.y) if hasattr(ps, 'shelf_data') else (getattr(ps, 'x', None), getattr(ps, 'y', None))
-                if ps_coord == (target_x, target_y):
-                    return True
-
-        # 2. Cek juga misi aktif saat ini jika kargo di rak belum selesai diambil
-        if self.is_race_active and not self.race_finished and self.selected_pickup_shelf:
-            ps = self.selected_pickup_shelf
-            ps_coord = (ps.shelf_data.x, ps.shelf_data.y) if hasattr(ps, 'shelf_data') else (getattr(ps, 'x', None), getattr(ps, 'y', None))
-            if ps_coord == (target_x, target_y) and hasattr(ps, 'shelf_data') and ps.shelf_data.has_cargo:
-                return True
-
-        return False
+    def is_dropoff_booked(self, x: Union[int, Tuple[int, int]], y: Optional[int] = None) -> bool:
+        """
+        Mengecek apakah koordinat (x, y) sudah di-booking sebagai tujuan drop-off
+        di antrean atau di misi aktif.
+        """
+        return self._is_shelf_booked(x, y, "dropoff_shelf", self.selected_dropoff_shelf, require_cargo=False)
 
     def is_cargo_booked(self, x: Union[int, Tuple[int, int]], y: Optional[int] = None) -> bool:
         """Alias kompatibilitas untuk is_pickup_booked."""
@@ -308,7 +339,7 @@ class MissionManager:
         """Dipanggil saat salah satu robot telah kembali dan standby di stasiun docking asalnya (Leg 3 selesai)."""
         if not self.first_to_arrive:
             self.first_to_arrive = f"{robot.robot_name} ({robot.algo_label})"
-            self.arrival_delta_time = time.time() - self.race_start_time
+            self.arrival_delta_time = self.race_elapsed_time
 
     def reset_race(self):
         """Mereset seluruh arena, posisi robot, dan seleksi rak."""
@@ -317,7 +348,14 @@ class MissionManager:
         self.race_start_time = None
         self.race_elapsed_time = 0.0
         self.first_to_arrive = None
+        self.arrival_delta_time = 0.0
         self.overall_efficiency_winner = None
+        self.dual_plan = None
+        self.current_pickup_access = None
+        self.current_dropoff_access = None
+        self.mission_type = MissionType.STANDARD_DELIVERY
+        self._last_forklift_threats.clear()
+        self.is_paused = False
 
         if self.selected_pickup_shelf:
             self.selected_pickup_shelf.clear_selection()
@@ -329,14 +367,20 @@ class MissionManager:
 
         self.robot_alpha.reset_to_dock()
         self.robot_beta.reset_to_dock()
+        for fl in getattr(self, 'forklifts', ()):
+            if hasattr(fl, 'is_paused'):
+                fl.is_paused = False
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
 
     def toggle_pause(self) -> bool:
-        """Menjeda atau melanjutkan pergerakan kedua robot."""
+        """Menjeda atau melanjutkan pergerakan kedua robot dan forklift."""
         self.is_paused = not self.is_paused
         self.robot_alpha.is_paused = self.is_paused
         self.robot_beta.is_paused = self.is_paused
+        for fl in getattr(self, 'forklifts', ()):
+            if hasattr(fl, 'is_paused'):
+                fl.is_paused = self.is_paused
         return self.is_paused
 
     def adjust_speed(self, delta: float) -> float:
@@ -552,7 +596,6 @@ class MissionManager:
         self.mission_type = MissionType.INTER_ZONE_TRANSFER
         gate_target = (33, 13)
 
-        from src.cognition.pathfinding import a_star_search, greedy_best_first_search
         res_alpha = a_star_search(self.graph, self.robot_alpha.spawn_coord, gate_target, heuristic=self.current_heuristic_fn)
         res_beta = greedy_best_first_search(self.graph, self.robot_beta.spawn_coord, gate_target, heuristic=self.current_heuristic_fn)
 
@@ -565,13 +608,17 @@ class MissionManager:
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
 
+        self.dual_plan = DualPathPlanner.plan_single_leg_race(res_alpha, res_beta)
+
         self.robot_alpha.speed = self.current_speed
         self.robot_alpha.set_mission_legs(
             leg1_path=res_alpha.path,
             leg2_path=[],
             on_pickup=None,
             on_dropoff=None,
+            on_finish=self._on_robot_finish,
         )
+        self.robot_alpha.last_explored_nodes = set(res_alpha.explored_order)
 
         self.robot_beta.speed = self.current_speed
         self.robot_beta.set_mission_legs(
@@ -579,7 +626,9 @@ class MissionManager:
             leg2_path=[],
             on_pickup=None,
             on_dropoff=None,
+            on_finish=self._on_robot_finish,
         )
+        self.robot_beta.last_explored_nodes = set(res_beta.explored_order)
 
         self.is_race_active = True
         self.race_finished = False
@@ -625,9 +674,24 @@ class MissionManager:
             new_graph = WarehouseGraph100.generate_complex_warehouse()
 
         self.graph = new_graph
+        self.task_queue.clear()
+        self.selected_pickup_shelf = None
+        self.selected_dropoff_shelf = None
+        self.current_pickup_access = None
+        self.current_dropoff_access = None
+        self.first_to_arrive = None
+        self.arrival_delta_time = 0.0
+        self.overall_efficiency_winner = None
+        self._last_forklift_threats.clear()
+        self.dual_plan = None
+        self.is_paused = False
+
         self.scene.rebuild_for_new_zone(new_graph)
         self._sync_robot_context()
         self._refresh_charging_markers()
+        for fl in getattr(self, 'forklifts', ()):
+            if hasattr(fl, 'is_paused'):
+                fl.is_paused = False
 
         # 1. Teleportasi robot ke sel grid tepat di depan Transfer Gate (keluar dari gerbang)
         gate_alpha = (33, 12)
@@ -637,14 +701,25 @@ class MissionManager:
         if not self.graph.is_walkable(gate_beta[0], gate_beta[1]):
             gate_beta = (33, 13)
 
-        self.robot_alpha.clear_trail()
-        self.robot_beta.clear_trail()
-        self.robot_alpha.position = grid_to_world(gate_alpha[0], gate_alpha[1], 0.0)
-        self.robot_beta.position = grid_to_world(gate_beta[0], gate_beta[1], 0.0)
-        self.robot_alpha.rotation_y = -90.0  # Menghadap ke barat (masuk ke dalam gudang)
-        self.robot_beta.rotation_y = -90.0
-        self.robot_alpha.deck_cargo.enabled = False
-        self.robot_beta.deck_cargo.enabled = False
+        for robot, gate in ((self.robot_alpha, gate_alpha), (self.robot_beta, gate_beta)):
+            robot.clear_trail()
+            robot.leg1_waypoints.clear()
+            robot.leg2_waypoints.clear()
+            robot.leg3_waypoints.clear()
+            robot.leg1_grid_path.clear()
+            robot.leg2_grid_path.clear()
+            robot.leg3_grid_path.clear()
+            robot.total_steps_executed = 0
+            robot.total_mission_steps = 0
+            robot.replan_count = 0
+            robot.finish_time = None
+            robot.last_explored_nodes.clear()
+            robot.position = grid_to_world(gate[0], gate[1], 0.0)
+            robot.rotation_y = -90.0  # Menghadap ke barat (masuk ke dalam gudang)
+            robot.deck_cargo.enabled = False
+            robot.is_paused = False
+            robot.pause_timer = 0.0
+            robot._update_visual_body()
 
         if hasattr(self.scene, 'clear_exploration_heatmap'):
             self.scene.clear_exploration_heatmap()
@@ -667,6 +742,11 @@ class MissionManager:
         self.robot_alpha.force_return_to_dock(self.graph, self.current_heuristic_fn)
         self.robot_beta.force_return_to_dock(self.graph, self.current_heuristic_fn)
 
+        res_a = a_star_search(self.graph, gate_alpha, self.robot_alpha.spawn_coord, heuristic=self.current_heuristic_fn)
+        res_b = greedy_best_first_search(self.graph, gate_beta, self.robot_beta.spawn_coord, heuristic=self.current_heuristic_fn)
+        if res_a.success and res_b.success:
+            self.dual_plan = DualPathPlanner.plan_single_leg_race(res_a, res_b)
+
         self.mission_type = MissionType.STANDARD_DELIVERY
         self.is_race_active = True
         self.race_finished = False
@@ -680,6 +760,10 @@ class MissionManager:
 
     def update(self):
         """Update loop per frame untuk pengecekan ancaman forklift, auto-dispatch antrean, dan gamifikasi."""
+        # 1. Pengecekan Ancaman Rintangan Dinamis Forklift (Collision Avoidance & Replanning)
+        if not self.is_paused:
+            self._check_forklift_collision_threats()
+
         # 2. Penugasan Otomatis Antrean Pesanan FIFO (Auto-Dispatch Task Queue)
         if not self.is_transitioning and len(self.task_queue) > 0:
             alpha_ready = self.robot_alpha.state in (RobotState.IDLE_DOCK, RobotState.FINISHED)

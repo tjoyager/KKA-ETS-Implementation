@@ -442,3 +442,33 @@ class DualPathPlanner:
             cost_delta=cost_delta,
             nodes_delta=nodes_delta,
         )
+
+    @classmethod
+    def plan_single_leg_race(cls, res_alpha: SearchResult, res_beta: SearchResult) -> DualRacePlan:
+        """Membungkus hasil pencarian single-leg (misal transfer zona) ke struktur DualRacePlan."""
+        def _wrap(res: SearchResult) -> MissionLegs:
+            empty_leg = SearchResult(algorithm_name=res.algorithm_name, success=True)
+            return MissionLegs(
+                leg1=res,
+                leg2=empty_leg,
+                leg3=None,
+                full_path=list(res.path) if res.success else [],
+                total_cost=res.cost if res.success else float("inf"),
+                total_nodes_explored=res.nodes_explored,
+                total_compute_time_ms=res.execution_time_ms,
+            )
+
+        plan_alpha = _wrap(res_alpha)
+        plan_beta = _wrap(res_beta)
+        shared_nodes = list(set(plan_alpha.full_path).intersection(plan_beta.full_path))
+        max_len = max(len(plan_alpha.full_path), len(plan_beta.full_path), 1)
+        congestion_index = len(shared_nodes) / float(max_len)
+
+        return DualRacePlan(
+            alpha_plan=plan_alpha,
+            beta_plan=plan_beta,
+            shared_bottleneck_nodes=shared_nodes,
+            congestion_index=congestion_index,
+            cost_delta=plan_beta.total_cost - plan_alpha.total_cost,
+            nodes_delta=plan_alpha.total_nodes_explored - plan_beta.total_nodes_explored,
+        )

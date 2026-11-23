@@ -298,7 +298,7 @@ class WarehouseScene(Entity):
         Entity(model='cube', position=pos_gate + Vec3(0.25, 1.8, 1.75), scale=Vec3(0.6, 3.6, 0.6), color=color.rgb32(28, 38, 54), shader=lit_with_shadows_shader)
         Entity(model='cube', position=pos_gate + Vec3(0.25, 3.6, 0), scale=Vec3(0.7, 0.6, 4.1), color=color.rgb32(110, 149, 144))
         Entity(model='cube', position=pos_gate + Vec3(0.25, 1.8, 0), scale=Vec3(0.08, 3.2, 3.1), color=color.rgba32(110, 149, 144, 74))
-        Text(text="TRANSFER GATE\n>>> ZONE B >>>", position=pos_gate + Vec3(0, 4.4, 0), scale=1.5, color=color.rgb32(110, 149, 144), billboard=True, origin=(0, 0), font='assets/fonts/Roboto-Bold.ttf')
+        self.transfer_gate_label = Text(text="TRANSFER GATE\n>>> ZONE B >>>", position=pos_gate + Vec3(0, 4.4, 0), scale=1.5, color=color.rgb32(110, 149, 144), billboard=True, origin=(0, 0), font='assets/fonts/Roboto-Bold.ttf')
 
     def _setup_camera(self):
         camera.fov = CAMERA_PRESETS["isometrik"]["fov"]
@@ -560,6 +560,7 @@ class WarehouseScene(Entity):
         from src.environment.interactive_shelf import InteractiveShelf
 
         for shelf in list(self.interactive_shelves.values()):
+            shelf.clear_selection()
             if shelf.visual_entity: destroy(shelf.visual_entity)
             destroy(shelf)
         self.interactive_shelves.clear()
@@ -577,7 +578,8 @@ class WarehouseScene(Entity):
         # 4. Terapkan graf baru & sinkronkan 3 Forklift
         self.graph = new_graph
         if hasattr(self, 'forklifts') and self.forklifts:
-            spawn_coords = [(17, 11), (5, 7), (23, 20)]
+            fl3_coord = (23, 20) if new_graph.is_walkable(23, 20) else (26, 20)
+            spawn_coords = [(17, 11), (5, 7), fl3_coord]
             for i, fl in enumerate(self.forklifts):
                 fl.graph = new_graph
                 fl.reset_position(spawn_coords[i % len(spawn_coords)])
@@ -621,3 +623,6 @@ class WarehouseScene(Entity):
 
         if self.sun and self.floor:
             self.sun.update_bounds(self.floor)
+        if getattr(self, 'transfer_gate_label', None) and self.mission_mgr:
+            next_zone = "ZONE A" if self.mission_mgr.current_zone == "Zone B" else "ZONE B"
+            self.transfer_gate_label.text = f"TRANSFER GATE\n>>> {next_zone} >>>"

@@ -204,6 +204,7 @@ class AGVRobot(Entity):
         self.emergency_dock: Optional[Coord] = None
         self._emergency_cooldown: float = 0.0
         self._resume_state: Optional["RobotState"] = None  # state misi yang dikesampingkan
+        self._battery_checked_coord: Optional[Coord] = None
 
         # Visual Indikator Baterai Melayang (Floating ProgressBar Billboard)
         bar_y = label_y + 0.65
@@ -266,8 +267,6 @@ class AGVRobot(Entity):
         self.total_steps_executed: int = 0
         self.total_mission_steps: int = 0
         self.finish_time: Optional[float] = None
-        self.on_pickup_callback = None
-        self.on_dropoff_callback = None
 
         # Sinkronkan posisi dan rotasi visual follower secara absolut sejak spawn
         self._update_visual_body()
@@ -352,6 +351,7 @@ class AGVRobot(Entity):
         self.is_critical_battery = False
         self.emergency_dock = None
         self._resume_state = None
+        self._battery_checked_coord = None
         self._charge_retry = 0.0
         self._emergency_cooldown = 0.0
         self.recharge_full()
@@ -450,7 +450,6 @@ class AGVRobot(Entity):
         self.leg2_waypoints = self._compute_lane_offset(raw_leg2, offset)
         self.leg3_waypoints = self._compute_lane_offset(raw_leg3, offset) if raw_leg3 else []
 
-        self.total_mission_steps = len(leg1_path) + len(leg2_path) + (len(leg3_path) if leg3_path else 0)
         self.total_steps_executed = 0
         self.finish_time = None
 
@@ -460,6 +459,7 @@ class AGVRobot(Entity):
         self.pickup_access = leg1_path[-1] if leg1_path else None
         self.dropoff_access = leg2_path[-1] if leg2_path else None
         self.replan_count = 0
+        self._battery_checked_coord = None
 
         if self.leg1_waypoints:
             self.active_waypoints = self.leg1_waypoints
@@ -467,11 +467,48 @@ class AGVRobot(Entity):
             self.waypoint_idx = 0
             self.state = RobotState.MOVING_TO_PICKUP
             self.active_waypoints[0] = self.position
+            self._recompute_total_mission_steps()
             self.spawn_trail_marker(self.position)
             self._update_visual_body()
             self.trigger_radar_pulse()
         else:
             self.state = RobotState.FINISHED
+            self._recompute_total_mission_steps()
+
+    def _recompute_total_mission_steps(self) -> int:
+        """Menghitung total langkah perpindahan (edges) misi: langkah selesai + sisa etape."""
+        if self.state == RobotState.IDLE_DOCK:
+            self.total_mission_steps = 0
+            return 0
+        if self.state == RobotState.FINISHED:
+            self.total_mission_steps = max(self.total_mission_steps, self.total_steps_executed)
+            return self.total_mission_steps
+
+        rem_active = 0
+        if self.state in (
+            RobotState.MOVING_TO_PICKUP,
+            RobotState.MOVING_TO_DROPOFF,
+            RobotState.RETURNING_TO_DOCK,
+            RobotState.TO_CHARGER,
+        ):
+            if self.state == RobotState.TO_CHARGER and len(self.active_grid_path) <= 1:
+                rem_active = 0
+            elif self.active_waypoints:
+                rem_active = max(0, (len(self.active_waypoints) - 1) - self.waypoint_idx)
+
+        future_legs = 0
+        eff_state = (
+            self._resume_state
+            if self.state in (RobotState.TO_CHARGER, RobotState.CHARGING)
+            else self.state
+        )
+        if eff_state in (RobotState.MOVING_TO_PICKUP, RobotState.LOADING_CARGO):
+            future_legs += max(0, len(self.leg2_grid_path) - 1) + max(0, len(self.leg3_grid_path) - 1)
+        elif eff_state in (RobotState.MOVING_TO_DROPOFF, RobotState.UNLOADING_CARGO):
+            future_legs += max(0, len(self.leg3_grid_path) - 1)
+
+        self.total_mission_steps = self.total_steps_executed + rem_active + future_legs
+        return self.total_mission_steps
 
     def trigger_radar_pulse(self):
         """Memunculkan efek gelombang cincin pemindaian LIDAR radar pulse 3D membesar & memudar."""
@@ -535,7 +572,7 @@ class AGVRobot(Entity):
                 self._finish_charging()
             return
 
-        if 0.0 < self.battery < self.battery_critical_threshold:
+        if 0.0 < self.battery <= self.battery_critical_threshold:
             blink = (int(time.time() * 8.0) % 2) == 0
             self.top_beacon.color = color.yellow if blink else self.primary_col
         else:
@@ -630,14 +667,20 @@ class AGVRobot(Entity):
         if dist <= step:
             self.position = target_pos
             self.waypoint_idx = target_idx
+            self._battery_checked_coord = None
             if self.state != RobotState.TO_CHARGER or len(self.active_grid_path) > 1:
                 self.total_steps_executed += 1
                 self.consume_battery(self.battery_drain_rate * drain_mult)
             self.spawn_trail_marker(target_pos)
+            if self.state == RobotState.DEAD:
+                self._update_visual_body()
+                return
             if self.state == RobotState.TO_CHARGER and target_idx == len(self.active_waypoints) - 1:
                 self._start_charging()
-            elif self.state != RobotState.DEAD and not self._check_battery_emergency():
-                return max(0.0, dt - dist / velocity) if velocity > 0 else 0.0
+            elif self.state == RobotState.RETURNING_TO_DOCK and target_idx == len(self.active_waypoints) - 1:
+                pass
+            else:
+                self._check_battery_emergency()
         else:
             ratio = step / dist
             self.x += dx * ratio
@@ -661,9 +704,10 @@ class AGVRobot(Entity):
         self.active_grid_path = [start] + nodes
         self.active_waypoints = [self.position] + points
         self.waypoint_idx = 0
+        self._battery_checked_coord = None
         self.last_explored_nodes = set(result.explored_order)
         self.replan_count += 1
-        return True
+        self._recompute_total_mission_steps()
 
     def _handle_leg_completion(self):
         """Dipanggil saat robot mencapai titik akhir etape rute."""
@@ -686,8 +730,11 @@ class AGVRobot(Entity):
         elif self.state == RobotState.RETURNING_TO_DOCK:
             # Tiba di Charging Dock karena baterai kritis: isi daya dulu, misi dilanjutkan setelahnya
             if self.emergency_dock is not None:
+                if self._resume_state is None:
+                    self._resume_state = RobotState.RETURNING_TO_DOCK
+                self._charge_retry = 0.0
+                self.pause_timer = 0.0
                 self.state = RobotState.CHARGING
-                self.pause_timer = 2.0
                 self.spawn_floating_text("+CHARGING+", color.rgb32(46, 204, 113))
                 self.label_tag.text = f"{self.robot_name}\n[MENGISI DAYA...]"
                 self.label_tag.color = color.rgb32(46, 204, 113)
@@ -696,6 +743,11 @@ class AGVRobot(Entity):
             # Tiba di stasiun dock asal (Leg 3 Selesai)!
             self.state = RobotState.FINISHED
             self.finish_time = time.time()
+            self.is_critical_battery = False
+            self.emergency_dock = None
+            self._resume_state = None
+            self._battery_checked_coord = None
+            self._recompute_total_mission_steps()
             self.spawn_floating_text("+BASE REACHED+", color.rgb32(46, 204, 113))
             self.visual_body.color = self.primary_col
             self.top_beacon.color = self.primary_col
@@ -716,7 +768,9 @@ class AGVRobot(Entity):
             self.active_waypoints = self.leg2_waypoints
             self.active_grid_path = list(self.leg2_grid_path)
             self.waypoint_idx = 0
+            self._battery_checked_coord = None
             self.state = RobotState.MOVING_TO_DROPOFF
+            self._recompute_total_mission_steps()
 
         elif self.state == RobotState.UNLOADING_CARGO:
             # Kargo berhasil diturunkan, robot otomatis memulai Leg 3: Auto-Return to Base!
@@ -726,6 +780,7 @@ class AGVRobot(Entity):
     def _start_return_leg(self):
         """Memulai perjalanan Leg 3: Pulang dari rak Drop-off menuju Dock asal."""
         self.state = RobotState.RETURNING_TO_DOCK
+        self._battery_checked_coord = None
         self.spawn_floating_text(">> RETURNING TO BASE >>", color.rgb32(0, 229, 255))
         self.label_tag.text = f"{self.robot_name}\n[PULANG KE BASE (LEG 3)]"
 
@@ -733,12 +788,16 @@ class AGVRobot(Entity):
             self.active_waypoints = self.leg3_waypoints
             self.active_grid_path = list(self.leg3_grid_path)
             self.waypoint_idx = 0
+            self._recompute_total_mission_steps()
         else:
             # Kalkulasi rute kembali ke spawn_coord jika belum terisi
             start_coord = world_to_grid(self.position)
-            from src.cognition.pathfinding import a_star_search, greedy_best_first_search
             search_fn = a_star_search if self.is_alpha else greedy_best_first_search
-            res = search_fn(self.graph, start_coord, self.spawn_coord) if self.graph else None
+            res = (
+                search_fn(self.graph, start_coord, self.spawn_coord, heuristic=self.heuristic_fn)
+                if self.graph
+                else None
+            )
             if res and res.success and res.path:
                 self.leg3_grid_path = list(res.path)
                 raw3 = [grid_to_world(p[0], p[1], 0.0) for p in res.path]
@@ -747,11 +806,17 @@ class AGVRobot(Entity):
                 self.active_waypoints = self.leg3_waypoints
                 self.active_grid_path = list(self.leg3_grid_path)
                 self.waypoint_idx = 0
+                self._recompute_total_mission_steps()
             else:
                 self.state = RobotState.FINISHED
                 self.finish_time = time.time()
+                self._recompute_total_mission_steps()
                 if self.on_finish_callback:
                     self.on_finish_callback(self)
+                return
+
+        if self.state == RobotState.RETURNING_TO_DOCK:
+            self._check_battery_emergency()
 
     # =========================================================================
     # METODE MANAJEMEN BATERAI & RECHARGE (FITUR 1)
@@ -765,9 +830,13 @@ class AGVRobot(Entity):
         self.battery = max(0.0, self.battery - drain)
         self._update_battery_visual()
 
-        docked = (self.state == RobotState.TO_CHARGER
-                  and self.waypoint_idx == len(self.active_waypoints) - 1
-                  and self.get_current_grid_coord() == self.emergency_dock)
+        at_final_wp = bool(self.active_waypoints) and self.waypoint_idx >= len(self.active_waypoints) - 1
+        curr_coord = self.get_current_grid_coord()
+        return_target = self.emergency_dock if self.emergency_dock is not None else self.spawn_coord
+        docked = at_final_wp and (
+            (self.state == RobotState.TO_CHARGER and curr_coord == self.emergency_dock)
+            or (self.state == RobotState.RETURNING_TO_DOCK and curr_coord == return_target)
+        )
         if self.battery <= 0.0 and not docked:
             self.state = RobotState.DEAD
             self.visual_body.color = color.rgb32(180, 50, 50)
@@ -786,7 +855,7 @@ class AGVRobot(Entity):
 
         if self.battery > 50.0:
             self.battery_bar_fill.color = color.rgb32(46, 204, 113)  # Hijau sehat
-        elif self.battery >= self.battery_critical_threshold:
+        elif self.battery > self.battery_critical_threshold:
             self.battery_bar_fill.color = color.rgb32(241, 196, 15)  # Kuning perhatian
         else:
             self.battery_bar_fill.color = color.rgb32(231, 76, 60)   # Merah kritis/mati
@@ -840,16 +909,17 @@ class AGVRobot(Entity):
         self.emergency_dock = None
         self.is_critical_battery = False
         self._charge_retry = 0.0
-        self._apply_new_active_path(res.path)
+        self._battery_checked_coord = None
         self.state = RobotState.RETURNING_TO_DOCK
         self.is_paused = False
+        self._apply_new_active_path(res.path)
         self.visual_body.color = self.primary_col
         self.label_tag.text = f"{self.robot_name}\n[KEMBALI KE DOCK]"
         self.label_tag.color = color.rgb32(241, 196, 15)
         return True
 
     def _check_battery_emergency(self) -> bool:
-        if self.graph is None or self.battery >= self.battery_critical_threshold:
+        if self.graph is None or self.battery > self.battery_critical_threshold:
             return False
         if self.state not in (
             RobotState.MOVING_TO_PICKUP,
@@ -858,12 +928,27 @@ class AGVRobot(Entity):
         ):
             return False
 
+        curr_coord = self.get_current_grid_coord()
+        return_target = self.emergency_dock if self.emergency_dock is not None else self.spawn_coord
+        if (
+            self.state == RobotState.RETURNING_TO_DOCK
+            and curr_coord == return_target
+            and self.active_waypoints
+            and self.waypoint_idx >= len(self.active_waypoints) - 1
+        ):
+            return False
+        if self.state == RobotState.RETURNING_TO_DOCK and self._battery_checked_coord == curr_coord:
+            return False
+
         self._resume_state = self.state
         self.state = RobotState.TO_CHARGER
         self.is_critical_battery = True
-        self._plan_charge_trip()
+        planned = self._plan_charge_trip()
+        if planned:
+            self._battery_checked_coord = None
+            return True
         if self.state != RobotState.TO_CHARGER:
-            self._emergency_cooldown = 0.5
+            self._battery_checked_coord = curr_coord
             return False
         return True
 
@@ -903,7 +988,7 @@ class AGVRobot(Entity):
                     self._resume_state = None
                     self.is_critical_battery = False
                 return False
-            home = a_star_search(self.graph, self.get_current_grid_coord(), self.spawn_coord, self.heuristic_fn)
+            home = a_star_search(graph, start, self.spawn_coord, heuristic=self.heuristic_fn)
             if home.success and self.battery > (home.cost + 1.0) * self.battery_drain_rate + margin:
                 if self._resume_state is not None:
                     self.state = self._resume_state
@@ -925,6 +1010,7 @@ class AGVRobot(Entity):
         # align to its center before charging without billing an extra tile.
         nodes = route.path[1:] or [self.emergency_dock]
         self.active_waypoints = [self.position] + [grid_to_world(*coord) for coord in nodes]
+        self._recompute_total_mission_steps()
         self.label_tag.text = f"{self.robot_name}\n[Ke charger {self.emergency_dock}]"
         return True
 
@@ -939,6 +1025,7 @@ class AGVRobot(Entity):
         self.waypoint_idx = 0
         nodes = path[1:] or [dock]
         self.active_waypoints = [self.position] + [grid_to_world(*coord) for coord in nodes]
+        self._recompute_total_mission_steps()
         self.label_tag.text = f"{self.robot_name}\n[Ke charger {dock}]"
 
 
@@ -954,7 +1041,8 @@ class AGVRobot(Entity):
         # Keep the cargo, leg and callbacks. A temporary obstacle at the
         # mission destination may require another attempt from the dock.
         dock = self.emergency_dock
-        self.state = self._resume_state
+        resume_state = self._resume_state or RobotState.RETURNING_TO_DOCK
+        self.state = resume_state
         self.emergency_dock = None
         manager = getattr(self.graph, 'traffic_manager', None)
         pickup = getattr(manager, 'selected_pickup_shelf', None)
@@ -964,11 +1052,15 @@ class AGVRobot(Entity):
                                       dropoff.shelf_data.coord if dropoff else None):
             self.state = RobotState.CHARGING
             self.emergency_dock = dock
+            self._resume_state = resume_state
             self._charge_retry = .5
             self.label_tag.text = f"{self.robot_name}\n[Terisi penuh, menunggu jalur]"
             return
         self.is_critical_battery = False
         self._resume_state = None
+        self._battery_checked_coord = None
+        self.pause_timer = 0.0
+        self._recompute_total_mission_steps()
         self.label_tag.text = f"{self.robot_name}\n[{self.state.value}]"
 
     # =========================================================================
@@ -1051,6 +1143,7 @@ class AGVRobot(Entity):
             # Do not interrupt the unloading animation or fire callbacks again.
             if updated_return:
                 self.replan_count += 1
+                self._recompute_total_mission_steps()
             return updated_return
 
         # recalculate_route already handles moving on leg 1 / leg 2,
@@ -1060,6 +1153,8 @@ class AGVRobot(Entity):
             pickup_shelf_coord=pickup_shelf_coord,
             dropoff_shelf_coord=dropoff_shelf_coord,
         )
+        if updated_return:
+            self._recompute_total_mission_steps()
         return updated_active or updated_return
 
     def recalculate_route(
@@ -1129,6 +1224,7 @@ class AGVRobot(Entity):
                     raw2 = [grid_to_world(p[0], p[1], 0.0) for p in res2.path]
                     offset = -0.22 if self.is_beta else 0.22
                     self.leg2_waypoints = self._compute_lane_offset(raw2, offset)
+                    self._recompute_total_mission_steps()
 
             return True
 
@@ -1136,6 +1232,7 @@ class AGVRobot(Entity):
         # KASUS 2: SEDANG BERJALAN MENUJU DROP-OFF (LEG 2)
         # ---------------------------------------------------------------------
         elif self.state == RobotState.MOVING_TO_DROPOFF:
+            prev_dropoff = self.dropoff_access
             target_access = self.dropoff_access
             if target_access is None or not graph.is_walkable(target_access[0], target_access[1]):
                 if dropoff_shelf_coord:
@@ -1144,6 +1241,10 @@ class AGVRobot(Entity):
 
             if target_access is None:
                 return False
+
+            if target_access != prev_dropoff:
+                self.leg3_grid_path = []
+                self.leg3_waypoints = []
 
             res = search_fn(graph, start_node, target_access, heuristic=heuristic_fn)
             if not res.success or not res.path:
@@ -1174,6 +1275,7 @@ class AGVRobot(Entity):
                     offset = -0.22 if self.is_beta else 0.22
                     self.leg2_waypoints = self._compute_lane_offset(raw2, offset)
                     self.replan_count += 1
+                    self._recompute_total_mission_steps()
                     return True
 
         # ---------------------------------------------------------------------
@@ -1194,15 +1296,23 @@ class AGVRobot(Entity):
 
     def _apply_new_active_path(self, new_grid_path: List[Coord], message: str = "REPLANNING ROUTE..."):
         """Menyambungkan posisi aktual robot saat ini ke waypoints rute baru secara halus."""
-        self.active_grid_path = list(new_grid_path)
+        if not new_grid_path:
+            return
+        curr_coord = self.get_current_grid_coord()
         raw_wps = [grid_to_world(p[0], p[1], 0.0) for p in new_grid_path]
         offset = -0.22 if self.is_beta else 0.22
         lane_wps = self._compute_lane_offset(raw_wps, offset)
 
         if lane_wps:
-            # Sambungkan posisi dunia robot saat ini sebagai simpul awal
-            self.active_waypoints = [self.position] + lane_wps[1:]
+            if new_grid_path[0] == curr_coord:
+                self.active_grid_path = list(new_grid_path)
+                self.active_waypoints = [self.position] + lane_wps[1:]
+            else:
+                self.active_grid_path = [curr_coord] + list(new_grid_path)
+                self.active_waypoints = [self.position] + lane_wps
             self.waypoint_idx = 0
+            self._battery_checked_coord = None
+            self._recompute_total_mission_steps()
             self.spawn_trail_marker(self.position)
             self.trigger_radar_pulse()
             self.spawn_floating_text(message, color.rgb32(0, 229, 255))

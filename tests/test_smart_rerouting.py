@@ -83,7 +83,8 @@ def test_smart_rerouting_battery_critical():
     r_alpha._resume_after_action()
     
     # Verifikasi Smart Re-routing:
-    assert r_alpha.state == RobotState.RETURNING_TO_DOCK
+    assert r_alpha.state == RobotState.TO_CHARGER
+    assert r_alpha._resume_state == RobotState.RETURNING_TO_DOCK
     assert r_alpha.is_critical_battery == True
     assert r_alpha.emergency_dock is not None
     # Dock darurat tidak boleh dock asal (17, 1) karena ada charger yang jauh lebih dekat di (22, 15)
@@ -95,7 +96,7 @@ def test_smart_rerouting_battery_critical():
     assert r_alpha.active_grid_path[-1] == r_alpha.emergency_dock
     print(f"  ✓ Rute aktif di-replan ke: {r_alpha.active_grid_path[-1]}")
     print(f"  ✓ Label tag robot: {r_alpha.label_tag.text}")
-    assert "DOCK" in r_alpha.label_tag.text
+    assert "charger" in r_alpha.label_tag.text.lower()
 
 
 def test_smart_rerouting_for_beta_gbfs():
@@ -115,7 +116,8 @@ def test_smart_rerouting_for_beta_gbfs():
     
     r_beta._resume_after_action()
     
-    assert r_beta.state == RobotState.RETURNING_TO_DOCK
+    assert r_beta.state == RobotState.TO_CHARGER
+    assert r_beta._resume_state == RobotState.RETURNING_TO_DOCK
     assert r_beta.is_critical_battery == True
     assert r_beta.emergency_dock is not None
     assert r_beta.emergency_dock != r_beta.spawn_coord
@@ -134,12 +136,27 @@ def test_dock_arrival_and_recharge():
     scene_mock.interactive_shelves = {}
     mgr = MissionManager(graph, scene_mock, r_alpha, r_beta)
     
-    r_alpha.state = RobotState.RETURNING_TO_DOCK
+    # Tahap A: Tiba di charging station interior (22, 15) -> isi daya -> lanjut Leg 3 ke dock asal
+    r_alpha.position = grid_to_world(22, 15, 0.0)
+    r_alpha.state = RobotState.TO_CHARGER
+    r_alpha._resume_state = RobotState.RETURNING_TO_DOCK
     r_alpha.battery = 10.0
     r_alpha.is_critical_battery = True
     r_alpha.emergency_dock = (22, 15)
     
-    # Simulasikan tiba di etape akhir (Leg Completion)
+    r_alpha._start_charging()
+    assert r_alpha.state == RobotState.CHARGING
+    r_alpha.recharge_full()
+    r_alpha._finish_charging()
+    assert r_alpha.state == RobotState.RETURNING_TO_DOCK
+    assert r_alpha.battery == 100.0
+    assert not r_alpha.is_critical_battery
+    assert r_alpha.emergency_dock is None
+    assert r_alpha.active_grid_path[-1] == SPAWN_ALPHA
+
+    # Tahap B: Tiba di dock asal (17, 1) -> selesai misi (FINISHED)
+    r_alpha.position = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
+    r_alpha.battery = 85.0
     r_alpha._handle_leg_completion()
     
     assert r_alpha.state == RobotState.FINISHED

@@ -759,6 +759,8 @@ class UIController:
         self.mission_mgr.graph.clear_terrain_modifiers()
         if hasattr(self.scene, "clear_exploration_heatmap"):
             self.scene.clear_exploration_heatmap()
+        if self.mission_mgr.is_race_active and not self.mission_mgr.race_finished:
+            self.mission_mgr.handle_terrain_modified((-1, -1))
         self.interaction_sys.prompt_text = "Dynamic obstacles, oil, and boost pads cleared."
 
     def _refresh_controls(self):
@@ -829,7 +831,7 @@ class UIController:
         self._sync_overlay_visibility()
         if self.report_open:
             self._refresh_report()
-        if not self.report_open and not (self.hud_serious.container.enabled or self.hud_gamification.container.enabled):
+        if self.hud_visible and not self.report_open and not (self.hud_serious.container.enabled or self.hud_gamification.container.enabled):
             self._apply_hud_visibility()
 
         queue = len(self.mission_mgr.task_queue)

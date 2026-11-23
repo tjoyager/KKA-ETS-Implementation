@@ -1,2 +1,4 @@
 numpy>=1.24.0
 ursina>=6.0.0
+Pillow>=10.1.0
+panda3d>=1.10.13
