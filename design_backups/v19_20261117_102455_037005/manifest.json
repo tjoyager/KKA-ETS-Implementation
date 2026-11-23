@@ -1,0 +1,17 @@
+{
+  "existing": [
+    "assets/audio/warehouse_motor.wav",
+    "assets/audio/warehouse_dropoff.wav",
+    "assets/audio/warehouse_pickup.wav",
+    "src/communication/warehouse_audio.py",
+    "src/environment/warehouse_scene.py"
+  ],
+  "files": [
+    "assets/audio/warehouse_motor.wav",
+    "assets/audio/warehouse_dropoff.wav",
+    "assets/audio/warehouse_pickup.wav",
+    "src/communication/warehouse_audio.py",
+    "src/environment/charging_station.py",
+    "src/environment/warehouse_scene.py"
+  ]
+}

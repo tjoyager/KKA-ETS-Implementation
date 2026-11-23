@@ -255,6 +255,25 @@ class ForkliftController(Entity):
         neighbors = self.graph.get_neighbors(cx, cy, allow_diagonal=False)
         candidates = [c for c in neighbors if self._can_move_to(c)]
 
+        # Prefer a safe exit that leaves the approaching AGVs' next edge clear.
+        manager = getattr(self.graph, "traffic_manager", None)
+        if manager and len(candidates) > 1:
+            edges = []
+            for robot in (manager.robot_alpha, manager.robot_beta):
+                idx = robot.waypoint_idx + 1
+                if (not robot.is_paused and robot.state.name in
+                        ("MOVING_TO_PICKUP", "MOVING_TO_DROPOFF", "RETURNING_TO_DOCK", "TO_CHARGER")
+                        and idx < len(robot.active_waypoints)):
+                    edges.append((robot.position, robot.active_waypoints[idx], robot.traffic_radius))
+            if edges:
+                clear = []
+                for gx, gy in candidates:
+                    heading = math.degrees(math.atan2(gx - cx, gy - cy))
+                    sweep = forklift_bounds(self, grid_to_world(gx, gy), heading)
+                    if not any(sweep.hits_segment(*edge) for edge in edges):
+                        clear.append((gx, gy))
+                candidates = clear or candidates
+
         # Hindari masuk ke docking station AGV jika ada rute lorong lain yang tersedia
         dock_coords = {
             getattr(self.graph, 'dock_alpha', None),

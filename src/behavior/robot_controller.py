@@ -202,6 +202,7 @@ class AGVRobot(Entity):
         self._charge_retry = 0.0
         self.heuristic_fn = manhattan_distance  # diisi MissionManager (heuristik aktif)
         self.emergency_dock: Optional[Coord] = None
+        self._emergency_cooldown: float = 0.0
         self._resume_state: Optional["RobotState"] = None  # state misi yang dikesampingkan
         self._battery_checked_coord: Optional[Coord] = None
 
@@ -352,6 +353,7 @@ class AGVRobot(Entity):
         self._resume_state = None
         self._battery_checked_coord = None
         self._charge_retry = 0.0
+        self._emergency_cooldown = 0.0
         self.recharge_full()
         self._update_visual_body()
 
@@ -595,15 +597,22 @@ class AGVRobot(Entity):
                 self._plan_charge_trip()
             return
 
+        remaining = time.dt
+        while remaining > 0:
+            remaining = self._advance_waypoint(remaining)
+        self._update_visual_body()
+
+    def _advance_waypoint(self, dt):
+        """Spend frame time on one checked edge and return any unused time."""
         # Navigasi waypoint saat ini
         if not self.active_waypoints or self.waypoint_idx >= len(self.active_waypoints):
-            return
+            return 0.0
 
         target_idx = self.waypoint_idx + 1
         if target_idx >= len(self.active_waypoints):
             # Capai akhir etape rute saat ini
             self._handle_leg_completion()
-            return
+            return 0.0
 
         target_pos = self.active_waypoints[target_idx]
         current_pos = self.position
@@ -615,20 +624,20 @@ class AGVRobot(Entity):
         if self.graph is not None:
             barriers = obstacles(self.graph)
             if any(b.hits_segment(current_pos, target_pos, self.traffic_radius) for b in barriers):
-                self._traffic_retry -= time.dt
+                self._traffic_retry -= dt
                 if self._traffic_retry <= 0:
                     self._traffic_retry = .5
                     if self.state == RobotState.TO_CHARGER:
                         self._plan_charge_trip()
-                    else:
-                        self._replan_clearance(barriers)
-                return
+                    elif self._replan_clearance(barriers):
+                        return dt
+                return 0.0
         self._traffic_retry = 0.0
 
         # Rotasi halus menghadap arah belokan
         if dist > 0.01:
             target_angle = math.degrees(math.atan2(dx, dz))
-            self.rotation_y = lerp_angle(self.rotation_y, target_angle, time.dt * ROTATION_SPEED)
+            self.rotation_y = lerp_angle(self.rotation_y, target_angle, min(1.0, dt * ROTATION_SPEED))
 
         # Translasi pergerakan AGV teroptimasi dengan efek Weighted Terrain (Fitur 1)
         curr_grid = self.get_current_grid_coord()
@@ -653,7 +662,8 @@ class AGVRobot(Entity):
                 self._on_oil = False
                 self._on_boost = False
 
-        step = (self.speed * speed_mult) * time.dt
+        velocity = self.speed * speed_mult
+        step = velocity * dt
         if dist <= step:
             self.position = target_pos
             self.waypoint_idx = target_idx
@@ -676,8 +686,7 @@ class AGVRobot(Entity):
             self.x += dx * ratio
             self.z += dz * ratio
 
-        # Perbarui posisi visual follower setelah translasi & rotasi di frame ini
-        self._update_visual_body()
+        return 0.0
 
     def _replan_clearance(self, barriers):
         start = self.get_current_grid_coord()
@@ -740,9 +749,11 @@ class AGVRobot(Entity):
             self._battery_checked_coord = None
             self._recompute_total_mission_steps()
             self.spawn_floating_text("+BASE REACHED+", color.rgb32(46, 204, 113))
-            self.label_tag.text = f"{self.robot_name}\n[STANDBY DI DOCK]"
+            self.visual_body.color = self.primary_col
+            self.top_beacon.color = self.primary_col
+            self._update_battery_visual()
+            self.label_tag.text = f"{self.robot_name}\n[STANDBY DI DOCK]\nSisa baterai: {self.battery:.0f}%"
             self.label_tag.color = self.primary_col
-            self.recharge_full()
             if self.on_finish_callback:
                 self.on_finish_callback(self)
 
@@ -864,7 +875,7 @@ class AGVRobot(Entity):
         Perintah intervensi user (Klik Kanan): Memaksa robot kembali ke stasiun docking
         untuk mengisi daya baterai hingga 100%.
         """
-        if self.state in (RobotState.IDLE_DOCK, RobotState.CHARGING):
+        if self.state in (RobotState.IDLE_DOCK, RobotState.CHARGING, RobotState.FINISHED):
             self.recharge_full()
             return True
 
