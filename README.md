@@ -191,12 +191,15 @@ KKA-ETS-Implementation/
 │   │   ├── Roboto-Bold.ttf            # Font tipografi judul & tombol
 │   │   └── Roboto-Regular.ttf         # Font telemetri & teks antarmuka
 │   └── models/
+│       ├── docking-station.obj        # Model 3D stasiun pengisian daya
+│       ├── emergency-panel-kit.obj    # Model 3D kotak panel listrik dan APAR
+│       ├── empty-shelf.obj            # Model 3D rak palet kosong
+│       ├── forklift.obj               # Model 3D kendaraan angkut forklift
+│       ├── occupied-shelf.obj         # Model 3D rak palet berisi kargo
 │       ├── robot.obj                  # Model 3D sasis AGV industri
 │       ├── robot-box.obj              # Model 3D AGV bermuatan kargo
-│       ├── empty-shelf.obj            # Model 3D rak palet kosong
-│       ├── occupied-shelf.obj         # Model 3D rak palet berisi kargo
-│       ├── cargo.obj                  # Model 3D kotak kargo karton
-│       └── docking-station.obj        # Model 3D stasiun pengisian daya
+│       ├── warehouse-barrier.obj      # Model 3D pagar/gerbang pembatas area rak
+│       └── warehouse-cabinet.obj      # Model 3D lemari penyimpanan modular gudang
 │
 ├── src/
 │   ├── config.py                      # Parameter grid 35x25, palet warna, dock coordinates, dan baterai
