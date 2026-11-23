@@ -175,8 +175,10 @@ def test_leg3_low_battery_near_home_does_not_freeze_or_die_on_arrival(monkeypatc
             break
 
     assert r_alpha.state == RobotState.FINISHED
-    assert r_alpha.battery == 100.0
+    assert r_alpha.battery == 0.0
     assert r_alpha.get_current_grid_coord() == SPAWN_ALPHA
+    assert r_alpha.force_return_to_dock(graph, mgr.current_heuristic_fn)
+    assert r_alpha.battery == 100.0
 
     # Case B: Interior dock (19, 9) is closer than spawn (17, 1) (cost 3 vs 9), yet battery (18%) suffices for home (needed 15).
     # Robot must restore RETURNING_TO_DOCK, cache per-cell check, and move home instead of freezing.
@@ -547,3 +549,121 @@ def test_ui_hud_hide_persists_and_clear_terrain_replans():
     assert r_alpha.replan_count > old_replan
 
     ui.warehouse_audio.on_destroy()
+
+
+def test_robot_escapes_enclosed_boxes_with_single_exit_using_real_model(monkeypatch):
+    from pathlib import Path
+    from ursina import application
+    from src.behavior.traffic_clearance import ClearanceGraph, obstacles, touches_robot
+    from src.cognition.pathfinding import a_star_search
+
+    orig_asset_folder = application.asset_folder
+    monkeypatch.setattr(application, "asset_folder", Path.cwd())
+    try:
+        # 1. Verify real robot.obj loads and carton_radius keeps 1-cell exits passable
+        graph = WarehouseGraph100(15, 15)
+        r_alpha = AGVRobot("AGV Alpha", "A*", (7, 7), (0, 200, 255), (0, 150, 255), speed=10.0, is_alpha=True)
+        r_beta = AGVRobot("AGV Beta", "GBFS", (1, 1), (255, 180, 0), (255, 140, 0), speed=10.0, is_alpha=False)
+        scene_mock = MagicMock()
+        scene_mock.interactive_shelves = {}
+        mgr = MissionManager(graph, scene_mock, r_alpha, r_beta)
+
+        assert r_alpha.visual_body.model is not None
+        assert r_alpha.traffic_radius > 0.6
+        assert r_alpha.carton_radius < 0.50
+        assert 0.43 + r_alpha.carton_radius < 1.0
+
+        # Case A: 5x5 box enclosure around (7, 7) with a 1-cell doorway at (7, 9) between boxes (6, 9) & (8, 9)
+        for x in range(5, 10):
+            for y in range(5, 10):
+                if (x in (5, 9) or y in (5, 9)) and (x, y) != (7, 9):
+                    assert graph.add_dynamic_obstacle(x, y)
+
+        barriers = obstacles(graph)
+        cg = ClearanceGraph(
+            graph, barriers, r_alpha.traffic_radius, (7, 7), grid_to_world(7, 7),
+            carton_radius=r_alpha.carton_radius,
+        )
+        res = a_star_search(cg, (7, 7), (7, 12))
+        assert res.success
+        assert (7, 9) in res.path
+
+        r_alpha.set_mission_legs([(7, 7), (7, 8), (7, 9), (7, 10), (7, 11), (7, 12)], [], [])
+        r_alpha.pickup_access = (7, 12)
+        monkeypatch.setattr(utime, "dt", 0.25)
+        for _ in range(40):
+            r_alpha.update()
+            if r_alpha.state == RobotState.LOADING_CARGO:
+                break
+        assert r_alpha.state == RobotState.LOADING_CARGO
+        assert r_alpha.get_current_grid_coord() == (7, 12)
+
+        # Case B: Tight 3x3 ring (7 boxes around (7, 7), 1 exit at (7, 8)), tested from center & +0.22 lane offset
+        graph2 = WarehouseGraph100(15, 15)
+        for bx, by in ((6, 8), (8, 8), (6, 7), (8, 7), (6, 6), (7, 6), (8, 6)):
+            assert graph2.add_dynamic_obstacle(bx, by)
+        r_alpha2 = AGVRobot("AGV Alpha", "A*", (7, 7), (0, 200, 255), (0, 150, 255), speed=10.0, is_alpha=True)
+        r_beta2 = AGVRobot("AGV Beta", "GBFS", (1, 1), (255, 180, 0), (255, 140, 0), speed=10.0, is_alpha=False)
+        mgr2 = MissionManager(graph2, scene_mock, r_alpha2, r_beta2)
+
+        for start_offset_x in (0.0, 0.22):
+            r_alpha2.reset_to_dock()
+            r_alpha2.set_mission_legs([(7, 7), (7, 8), (7, 9), (7, 10)], [], [])
+            r_alpha2.position = grid_to_world(7, 7) + Vec3(start_offset_x, 0, 0)
+            r_alpha2._update_visual_body()
+            for _ in range(40):
+                r_alpha2.update()
+                if r_alpha2.state == RobotState.LOADING_CARGO:
+                    break
+            assert r_alpha2.state == RobotState.LOADING_CARGO
+            assert r_alpha2.get_current_grid_coord() == (7, 10)
+
+        # Case C: Fully 4-side sealed prison -> remove 1 box -> robot exits immediately
+        graph3 = WarehouseGraph100(15, 15)
+        for bx, by in ((6, 7), (8, 7), (7, 6), (7, 8)):
+            assert graph3.add_dynamic_obstacle(bx, by)
+        r_alpha3 = AGVRobot("AGV Alpha", "A*", (7, 7), (0, 200, 255), (0, 150, 255), speed=10.0, is_alpha=True)
+        r_beta3 = AGVRobot("AGV Beta", "GBFS", (1, 1), (255, 180, 0), (255, 140, 0), speed=10.0, is_alpha=False)
+        mgr3 = MissionManager(graph3, scene_mock, r_alpha3, r_beta3)
+        r_alpha3.set_mission_legs([(7, 7), (7, 8), (7, 9), (7, 10)], [], [])
+        # Solid box at (7, 8) blocks departure
+        for _ in range(5):
+            r_alpha3.update()
+        assert r_alpha3.get_current_grid_coord() == (7, 7)
+
+        # Removing box at (7, 8) opens the single exit
+        assert graph3.remove_dynamic_obstacle(7, 8)
+        mgr3.handle_dynamic_obstacle_removed((7, 8))
+        for _ in range(40):
+            r_alpha3.update()
+            if r_alpha3.state == RobotState.LOADING_CARGO:
+                break
+        assert r_alpha3.state == RobotState.LOADING_CARGO
+        assert r_alpha3.get_current_grid_coord() == (7, 10)
+
+        # Verify touches_robot uses carton_radius cleanly & forklifts keep full traffic_radius
+        from src.behavior.traffic_clearance import carton_bounds, forklift_bounds
+        r_alpha3.position = grid_to_world(7, 7)
+        assert not touches_robot(carton_bounds((8, 7)), mgr3)
+        assert touches_robot(carton_bounds((7, 7)), mgr3)
+
+        fl = ForkliftController(graph=graph3, start_coord=(7, 8))
+        fl_bounds = forklift_bounds(fl)
+        assert not fl_bounds.is_carton
+        assert fl_bounds.blocks_segment(grid_to_world(7, 7), grid_to_world(7, 8), r_alpha3.traffic_radius, r_alpha3.carton_radius)
+        fl.on_destroy()
+    finally:
+        application.asset_folder = orig_asset_folder
+
+
+def test_advance_waypoint_dead_mid_frame_returns_float(monkeypatch):
+    graph, _, _, r_alpha, _ = _make_setup()
+    r_alpha.speed = 10.0
+    r_alpha.position = grid_to_world(18, 2, 0.0)
+    r_alpha.set_mission_legs([(18, 2), (17, 2), (16, 2)], [], [])
+    r_alpha.battery = 25.0
+    r_alpha.battery_drain_rate = 25.0  # Drops to 0.0 on arrival at (17, 2) -> RobotState.DEAD mid-frame
+
+    monkeypatch.setattr(utime, "dt", 0.5)
+    r_alpha.update()
+    assert r_alpha.state == RobotState.DEAD
