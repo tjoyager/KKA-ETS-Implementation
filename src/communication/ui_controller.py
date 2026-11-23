@@ -281,9 +281,9 @@ class UIController:
         # Right sidebar: every button has its own row, and all text stays inside.
         panel_w = 0.34 if aspect >= 1.52 else (0.31 if aspect >= 1.32 else 0.28)
         right = half - 0.016
-        legend_w = min(0.36, (0.68 * 310 / 575), aspect * 0.35)
-        self.legend_panel.scale = Vec3(legend_w, legend_w * 575 / 310, 1)
-        self.legend_panel.position = Vec3(right - legend_w / 2, 0.367 - self.legend_panel.scale_y / 2, 0.016)
+        legend_w = min(0.32, aspect * 0.28)
+        self.legend_panel.scale = Vec3(legend_w, 0.370, 1)
+        self.legend_panel.position = Vec3(-half + 0.018 + legend_w / 2, -0.398 + self.legend_panel.scale_y / 2, 0.016)
         center = right - panel_w / 2
         left = right - panel_w + 0.022
         self.side_bg.position = Vec3(center, 0.040, 0.032)
@@ -458,8 +458,10 @@ class UIController:
         self.message_text.enabled = prompt_visible and not self.speed_toast_bg.enabled
         if not self._report_has_plan():
             self.report_open = False
-        for el in self._report_elements:
-            el.enabled = self.report_open and self._report_has_plan()
+        if self.report_open != getattr(self, "_report_widgets_visible", None):
+            for el in self._report_elements:
+                el.enabled = self.report_open
+            self._report_widgets_visible = self.report_open
         self.speed_chip_bg.enabled = not self.report_open
         self.speed_chip_text.enabled = not self.report_open
         self.speed_chip_caption.enabled = not self.report_open
@@ -473,7 +475,7 @@ class UIController:
         self.btn_report.text_color = color.rgb32(*(self.CYAN if self.report_open else self.TEXT))
 
     def _apply_tools_visibility(self):
-        show_tools = self.tools_open and not self.legend_open
+        show_tools = self.tools_open
         for item in self._tool_panel_items:
             item.enabled = show_tools and item is not self.tools_hint and item is not self.tools_footer
         # A single short help line sits *inside* the sidebar, under the last button.
@@ -499,11 +501,7 @@ class UIController:
             self._apply_tools_visibility()
 
     def toggle_tools(self):
-        if self.legend_open:
-            self.legend_open = False
-            self.tools_open = True
-        else:
-            self.tools_open = not self.tools_open
+        self.tools_open = not self.tools_open
         self._tools_user_toggled = True
         self._apply_tools_visibility()
 

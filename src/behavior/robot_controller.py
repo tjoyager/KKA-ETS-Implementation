@@ -555,15 +555,22 @@ class AGVRobot(Entity):
                 self._plan_charge_trip()
             return
 
+        remaining = time.dt
+        while remaining > 0:
+            remaining = self._advance_waypoint(remaining)
+        self._update_visual_body()
+
+    def _advance_waypoint(self, dt):
+        """Spend frame time on one checked edge and return any unused time."""
         # Navigasi waypoint saat ini
         if not self.active_waypoints or self.waypoint_idx >= len(self.active_waypoints):
-            return
+            return 0.0
 
         target_idx = self.waypoint_idx + 1
         if target_idx >= len(self.active_waypoints):
             # Capai akhir etape rute saat ini
             self._handle_leg_completion()
-            return
+            return 0.0
 
         target_pos = self.active_waypoints[target_idx]
         current_pos = self.position
@@ -575,20 +582,20 @@ class AGVRobot(Entity):
         if self.graph is not None:
             barriers = obstacles(self.graph)
             if any(b.hits_segment(current_pos, target_pos, self.traffic_radius) for b in barriers):
-                self._traffic_retry -= time.dt
+                self._traffic_retry -= dt
                 if self._traffic_retry <= 0:
                     self._traffic_retry = .5
                     if self.state == RobotState.TO_CHARGER:
                         self._plan_charge_trip()
-                    else:
-                        self._replan_clearance(barriers)
-                return
+                    elif self._replan_clearance(barriers):
+                        return dt
+                return 0.0
         self._traffic_retry = 0.0
 
         # Rotasi halus menghadap arah belokan
         if dist > 0.01:
             target_angle = math.degrees(math.atan2(dx, dz))
-            self.rotation_y = lerp_angle(self.rotation_y, target_angle, time.dt * ROTATION_SPEED)
+            self.rotation_y = lerp_angle(self.rotation_y, target_angle, min(1.0, dt * ROTATION_SPEED))
 
         # Translasi pergerakan AGV teroptimasi dengan efek Weighted Terrain (Fitur 1)
         curr_grid = self.get_current_grid_coord()
@@ -613,7 +620,8 @@ class AGVRobot(Entity):
                 self._on_oil = False
                 self._on_boost = False
 
-        step = (self.speed * speed_mult) * time.dt
+        velocity = self.speed * speed_mult
+        step = velocity * dt
         if dist <= step:
             self.position = target_pos
             self.waypoint_idx = target_idx
@@ -623,15 +631,14 @@ class AGVRobot(Entity):
             self.spawn_trail_marker(target_pos)
             if self.state == RobotState.TO_CHARGER and target_idx == len(self.active_waypoints) - 1:
                 self._start_charging()
-            else:
-                self._check_battery_emergency()
+            elif self.state != RobotState.DEAD and not self._check_battery_emergency():
+                return max(0.0, dt - dist / velocity) if velocity > 0 else 0.0
         else:
             ratio = step / dist
             self.x += dx * ratio
             self.z += dz * ratio
 
-        # Perbarui posisi visual follower setelah translasi & rotasi di frame ini
-        self._update_visual_body()
+        return 0.0
 
     def _replan_clearance(self, barriers):
         start = self.get_current_grid_coord()
@@ -651,6 +658,7 @@ class AGVRobot(Entity):
         self.waypoint_idx = 0
         self.last_explored_nodes = set(result.explored_order)
         self.replan_count += 1
+        return True
 
     def _handle_leg_completion(self):
         """Dipanggil saat robot mencapai titik akhir etape rute."""
@@ -1125,7 +1133,7 @@ class AGVRobot(Entity):
 
         if lane_wps:
             # Sambungkan posisi dunia robot saat ini sebagai simpul awal
-            self.active_waypoints = [self.position] + lane_wps
+            self.active_waypoints = [self.position] + lane_wps[1:]
             self.waypoint_idx = 0
             self.spawn_trail_marker(self.position)
             self.trigger_radar_pulse()
