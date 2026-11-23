@@ -23,3 +23,9 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# Internal AI agent context & local backups
+PROJECT_CONTEXT.md
+rule.md
+design_backups/
+*.patch
