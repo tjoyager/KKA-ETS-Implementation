@@ -8,7 +8,8 @@ from src.config import grid_to_world
 
 class InteriorChargingStation(Entity):
     def __init__(self, manager, dock):
-        super().__init__(parent=manager.scene, position=grid_to_world(*dock, .025),
+        parent = manager.scene if isinstance(getattr(manager, 'scene', None), Entity) else None
+        super().__init__(parent=parent, position=grid_to_world(*dock, .025),
                          name='interior_charging_station', collider=None)
         self.manager=manager
         self.dock=dock
@@ -58,3 +59,13 @@ class InteriorChargingStation(Entity):
             self.lamp.color=color.rgb32(89,203,167)
             # Idle screen is dim, rather than displaying a fictitious battery level.
             for bar in self.bars:bar.color=color.rgb32(36,65,64)
+
+
+def build_charging_station(scene=None):
+    """Fallback / alias helper agar sinkron dengan charging_station.py."""
+    from src.environment.charging_station import build_charging_station as _bcs
+    return _bcs(scene)
+
+
+__all__ = ["InteriorChargingStation", "build_charging_station"]
+
