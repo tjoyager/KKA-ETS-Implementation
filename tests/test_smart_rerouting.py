@@ -154,13 +154,16 @@ def test_dock_arrival_and_recharge():
     assert r_alpha.emergency_dock is None
     assert r_alpha.active_grid_path[-1] == SPAWN_ALPHA
 
-    # Tahap B: Tiba di dock asal (17, 1) -> selesai misi (FINISHED)
+    # Tahap B: Tiba di dock asal (17, 1) -> selesai misi (FINISHED), sisa baterai dipertahankan sampai recharge manual
     r_alpha.position = grid_to_world(SPAWN_ALPHA[0], SPAWN_ALPHA[1], 0.0)
     r_alpha.battery = 85.0
     r_alpha._handle_leg_completion()
     
     assert r_alpha.state == RobotState.FINISHED
-    assert r_alpha.battery == 100.0
+    assert r_alpha.battery == 85.0
+    assert "85%" in r_alpha.label_tag.text
     assert not r_alpha.is_critical_battery
     assert r_alpha.emergency_dock is None
-    print(f"  ✓ Selesai docking: State = {r_alpha.state.value}, Baterai = {r_alpha.battery}%")
+    assert r_alpha.force_return_to_dock(graph, mgr.current_heuristic_fn)
+    assert r_alpha.battery == 100.0
+    print(f"  ✓ Selesai docking: State = {r_alpha.state.value}, Baterai setelah recharge = {r_alpha.battery}%")

@@ -140,6 +140,7 @@ class AGVRobot(Entity):
         self.visual_body.robot_owner = self
         self.body_offset: float = min(ROBOT_OFFSET_DISTANCE, .10)
         self.traffic_radius: float = 0.45
+        self.carton_radius: float = 0.43
         self._measure_traffic_radius()
         self._traffic_retry = 0.0
         self.cast_shadows = True
@@ -289,13 +290,20 @@ class AGVRobot(Entity):
         # Measure only the model (HUD labels and halo are not solid).
         body = self.visual_body
         bounds = body.model.getTightBounds(body) if body.model is not None else None
+        half_x = 0.275  # .55-scaled fallback cube half-width
+        half_z = 0.275
         radius = .39  # .55-scaled fallback cube, including its corners
         if bounds:
             lo, hi = bounds
-            radius = max(radius, math.hypot(max(abs(lo.x), abs(hi.x)) * abs(body.scale_x),
-                                            max(abs(lo.z), abs(hi.z)) * abs(body.scale_z)))
+            half_x = max(abs(lo.x), abs(hi.x)) * abs(body.scale_x)
+            half_z = max(abs(lo.z), abs(hi.z)) * abs(body.scale_z)
+            radius = max(radius, math.hypot(half_x, half_z))
         self.body_offset = min(ROBOT_OFFSET_DISTANCE, .10)
         self.traffic_radius = radius + self.body_offset + .01
+        # Static cartons stay centered in their grid cell (half-width 0.43 -> 0.57 gap to adjacent cell center).
+        # Use lateral body width + visual offset (capped < 0.50) so 1-cell exits between boxes stay passable.
+        lateral = min(half_x, half_z)
+        self.carton_radius = min(0.45, lateral + self.body_offset + .01)
 
     def _update_visual_body(self):
         """
@@ -623,7 +631,7 @@ class AGVRobot(Entity):
         # Check the entire edge before rotation, movement, battery or arrival events.
         if self.graph is not None:
             barriers = obstacles(self.graph)
-            if any(b.hits_segment(current_pos, target_pos, self.traffic_radius) for b in barriers):
+            if any(b.blocks_segment(current_pos, target_pos, self.traffic_radius, self.carton_radius) for b in barriers):
                 self._traffic_retry -= dt
                 if self._traffic_retry <= 0:
                     self._traffic_retry = .5
@@ -674,7 +682,7 @@ class AGVRobot(Entity):
             self.spawn_trail_marker(target_pos)
             if self.state == RobotState.DEAD:
                 self._update_visual_body()
-                return
+                return 0.0
             if self.state == RobotState.TO_CHARGER and target_idx == len(self.active_waypoints) - 1:
                 self._start_charging()
             elif self.state == RobotState.RETURNING_TO_DOCK and target_idx == len(self.active_waypoints) - 1:
@@ -691,16 +699,19 @@ class AGVRobot(Entity):
     def _replan_clearance(self, barriers):
         start = self.get_current_grid_coord()
         goal = world_to_grid(self.active_waypoints[-1])
-        graph = ClearanceGraph(self.graph, barriers, self.traffic_radius, start, self.position)
+        graph = ClearanceGraph(
+            self.graph, barriers, self.traffic_radius, start, self.position,
+            carton_radius=self.carton_radius,
+        )
         search = a_star_search if self.is_alpha else greedy_best_first_search
         result = search(graph, start, goal, heuristic=self.heuristic_fn)
         if not result.success:
-            return
+            return False
         # Aim for cell centers on the detour, leaving the most space at corners.
         nodes = result.path[1:] or [goal]
         points = [grid_to_world(*node) for node in nodes]
-        if any(b.hits_segment(self.position, points[0], self.traffic_radius) for b in barriers):
-            return
+        if any(b.blocks_segment(self.position, points[0], self.traffic_radius, self.carton_radius) for b in barriers):
+            return False
         self.active_grid_path = [start] + nodes
         self.active_waypoints = [self.position] + points
         self.waypoint_idx = 0
@@ -708,6 +719,7 @@ class AGVRobot(Entity):
         self.last_explored_nodes = set(result.explored_order)
         self.replan_count += 1
         self._recompute_total_mission_steps()
+        return True
 
     def _handle_leg_completion(self):
         """Dipanggil saat robot mencapai titik akhir etape rute."""
@@ -956,10 +968,15 @@ class AGVRobot(Entity):
         """Select a reachable dock using the same clearances as the movement controller."""
         start = self.get_current_grid_coord()
         barriers = obstacles(self.graph)
-        graph = ClearanceGraph(self.graph, barriers, self.traffic_radius, start, self.position)
+        graph = ClearanceGraph(
+            self.graph, barriers, self.traffic_radius, start, self.position,
+            carton_radius=self.carton_radius,
+        )
         docks = self.graph.get_charging_docks()
-        if start in docks and any(b.hits_segment(self.position, grid_to_world(*start),
-                                                 self.traffic_radius) for b in barriers):
+        if start in docks and any(
+            b.blocks_segment(self.position, grid_to_world(*start), self.traffic_radius, self.carton_radius)
+            for b in barriers
+        ):
             docks = [dock for dock in docks if dock != start]
         found = find_nearest_dock(graph, start, docks,
                                   heuristic=self.heuristic_fn, use_astar=True)
@@ -1312,6 +1329,7 @@ class AGVRobot(Entity):
                 self.active_waypoints = [self.position] + lane_wps
             self.waypoint_idx = 0
             self._battery_checked_coord = None
+            self._traffic_retry = 0.0
             self._recompute_total_mission_steps()
             self.spawn_trail_marker(self.position)
             self.trigger_radar_pulse()
